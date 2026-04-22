@@ -55,6 +55,12 @@ int main(int argc, char* argv[]) {
     int res;
     int packet_count = 0;
 
+	struct EthHeader {
+		u_char dest[6];
+		u_char src[6];
+		u_short type;
+	} __attribute__((packed));
+
 	printf("Packet Programming\n");
 	pcap_t* handle = pcap_open_offline("../pcapfiles/http-filtered-packet.pcap", errbuf);
 	if (handle == NULL) {
@@ -62,6 +68,7 @@ int main(int argc, char* argv[]) {
 		return -1;
 	}
 	printf("Packet Started\n");
+
 	while ((res = pcap_next_ex(handle, &header, &packet)) >= 0) {
         if (res == 0) continue;
 
@@ -75,6 +82,34 @@ int main(int argc, char* argv[]) {
             // 가독성을 위해 16바이트마다 줄바꿈
             if ((i + 1) % 16 == 0) printf("\n");
         }
+
+		printf("\n------------------------------------------\n");
+		printf("[Ethernet Header]\n");
+
+		// 패킷 데이터를 담고 있는 버퍼가 있다고 가정 (unsigned char *packet)
+		struct EthHeader *eth = (struct EthHeader *)packet;
+
+		printf("Source MAC: ");
+		for (int i = 0; i < 6; i++) {
+			printf("%02x", eth->src[i]);
+			if (i < 5) printf(":");
+		}
+
+		printf("Destination MAC: ");
+		for (int i = 0; i < 6; i++) {
+			printf("%02x", eth->dest[i]);
+			if (i < 5) printf(":");
+		}
+		printf("EtherType: 0x%04x\n", ntohs(eth->type));
+
+		// 타입 확인 (0x0800이면 IPv4, 0x0806이면 ARP 등)
+		// 네트워크 바이트 순서(Big-endian)이므로 ntohs()로 변환 필요
+		if (ntohs(eth->type) == 0x0800) {
+			printf("이 패킷은 IPv4 패킷입니다.\n");
+		} else if (ntohs(eth->type) == 0x0806){
+			printf("이 패킷은 ARP 패킷입니다.\n");
+		}
+
         printf("\n------------------------------------------\n");
 		if (packet_count >= 1) break; // 예시로 1개 패킷만 출력하도록 제한
     }
