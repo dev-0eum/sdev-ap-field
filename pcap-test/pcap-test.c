@@ -39,7 +39,7 @@ int main(int argc, char* argv[]) {
 		struct pcap_pkthdr* header;
 		const u_char* packet;
 		int res = pcap_next_ex(pcap, &header, &packet);
-		break;
+		break; // temp break
 		if (res == 0) continue;
 		if (res == PCAP_ERROR || res == PCAP_ERROR_BREAK) {
 			printf("pcap_next_ex return %d(%s)\n", res, pcap_geterr(pcap));
@@ -48,14 +48,37 @@ int main(int argc, char* argv[]) {
 		// printf("%u bytes captured\n", header->caplen);
 		pcap_close(pcap);
 	}
+
+	// My code
+	struct pcap_pkthdr* header;
+    const u_char* packet;
+    int res;
+    int packet_count = 0;
+
 	printf("Packet Programming\n");
-	pcap_t* f = pcap_open_offline("../pcapfiles/http-packet.pcap", errbuf);
-	if (f == NULL) {
+	pcap_t* handle = pcap_open_offline("../pcapfiles/http-filtered-packet.pcap", errbuf);
+	if (handle == NULL) {
 		fprintf(stderr, "Couldn't open pcap file: %s\n", errbuf);
 		return -1;
 	}
 	printf("Packet Started\n");
+	while ((res = pcap_next_ex(handle, &header, &packet)) >= 0) {
+        if (res == 0) continue;
+
+        printf("\n[Packet #%d] Length: %u bytes\n", ++packet_count, header->caplen);
+        
+        // --- 여기서부터 1바이트씩 읽고 출력하는 핵심 로직 ---
+        for (u_int i = 0; i < header->caplen; i++) {
+            // 1바이트씩 16진수로 출력
+            printf("%02x ", packet[i]);
+
+            // 가독성을 위해 16바이트마다 줄바꿈
+            if ((i + 1) % 16 == 0) printf("\n");
+        }
+        printf("\n------------------------------------------\n");
+		if (packet_count >= 1) break; // 예시로 1개 패킷만 출력하도록 제한
+    }
 
 
-	pcap_close(pcap);
+	pcap_close(handle);
 }
