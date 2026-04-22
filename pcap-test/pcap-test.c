@@ -74,6 +74,18 @@ int main(int argc, char* argv[]) {
 		u_char  dest_ip[4];        // Destination IP Address
 	} __attribute__((packed));
 
+	struct TCPHeader {
+		u_short src_port;        // Source Port
+		u_short dest_port;       // Destination Port
+		u_int seq_num;          // Sequence Number
+		u_int ack_num;          // Acknowledgment Number
+		u_char data_offset;     // Data Offset (4 bits) + Reserved (3 bits) + NS flag (1 bit)
+		u_char flags;           // CWR, ECE, URG, ACK, PSH, RST, SYN, FIN (8 bits)
+		u_short window;         // Window Size
+		u_short checksum;       // Checksum
+		u_short urgent_ptr;     // Urgent Pointer
+	} __attribute__((packed));
+
 	printf("Packet Programming\n");
 	pcap_t* handle = pcap_open_offline("../pcapfiles/http-filtered-packet.pcap", errbuf);
 	if (handle == NULL) {
@@ -139,8 +151,20 @@ int main(int argc, char* argv[]) {
 			printf("이 패킷은 ICMP 패킷입니다.\n");
 		}
 
+		printf("\n[TCP Header]\n");
+		// IPv4 헤더 뒤에 TCP 헤더가 위치하기에 offset 계산
+		struct TCPHeader *tcp = (struct TCPHeader *)(packet + sizeof(struct EthHeader) + sizeof(struct IPv4Header));
+		printf("Source Port: %d\n", ntohs(tcp->src_port));
+		printf("Destination Port: %d\n", ntohs(tcp->dest_port));
+
+		
+
 
         printf("\n------------------------------------------\n");
+		printf("%lu", sizeof(u_short));
+		printf("%lu", sizeof(u_char));
+		printf("%lu", sizeof(u_int8_t));
+		printf("%lu", sizeof(u_int16_t));
 		if (packet_count >= 1) break; // 예시로 1개 패킷만 출력하도록 제한
     }
 
