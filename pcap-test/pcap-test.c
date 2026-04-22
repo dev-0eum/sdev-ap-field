@@ -56,9 +56,22 @@ int main(int argc, char* argv[]) {
     int packet_count = 0;
 
 	struct EthHeader {
-		u_char dest[6];
-		u_char src[6];
+		u_char dest_mac[6];
+		u_char src_mac[6];
 		u_short type;
+	} __attribute__((packed)); // 메모리 최적화 위한 패딩 제거
+
+	struct IPv4Header {
+		u_char ver_ihl;			// Version + Internet Header Length
+		u_char  tos;            // Type of Service
+		u_short tlen;           // Total Length
+		u_short id;             // Identification
+		u_short flags_off;       // Flags (3 bits) + Fragment Offset (13 bits)
+		u_char  ttl;            // Time to Live
+		u_char  proto;          // Protocol (TCP=6, UDP=17, ICMP=1 등)
+		u_short checksum;            // Header Checksum
+		u_char  src_ip[4];         // Source IP Address
+		u_char  dest_ip[4];        // Destination IP Address
 	} __attribute__((packed));
 
 	printf("Packet Programming\n");
@@ -91,16 +104,16 @@ int main(int argc, char* argv[]) {
 
 		printf("Source MAC: ");
 		for (int i = 0; i < 6; i++) {
-			printf("%02x", eth->src[i]);
+			printf("%02x", eth->src_mac[i]);
 			if (i < 5) printf(":");
 		}
 
-		printf("Destination MAC: ");
+		printf("\nDestination MAC: ");
 		for (int i = 0; i < 6; i++) {
-			printf("%02x", eth->dest[i]);
+			printf("%02x", eth->dest_mac[i]);
 			if (i < 5) printf(":");
 		}
-		printf("EtherType: 0x%04x\n", ntohs(eth->type));
+		printf("\nEtherType: 0x%04x\n", ntohs(eth->type));
 
 		// 타입 확인 (0x0800이면 IPv4, 0x0806이면 ARP 등)
 		// 네트워크 바이트 순서(Big-endian)이므로 ntohs()로 변환 필요
@@ -109,6 +122,23 @@ int main(int argc, char* argv[]) {
 		} else if (ntohs(eth->type) == 0x0806){
 			printf("이 패킷은 ARP 패킷입니다.\n");
 		}
+
+		printf("\n[IPv4 Header]\n");
+		// Ethernet 헤더 바로 뒤에 IPv4 헤더가 위치하기에 offset 계산
+		struct IPv4Header *ip = (struct IPv4Header *)(packet + sizeof(struct EthHeader));
+		printf("Source IP: %d.%d.%d.%d\n", ip->src_ip[0], ip->src_ip[1], ip->src_ip[2], ip->src_ip[3]);
+		printf("Destination IP: %d.%d.%d.%d\n", ip->dest_ip[0], ip->dest_ip[1], ip->dest_ip[2], ip->dest_ip[3]);
+		printf("Protocol: %d\n", ip->proto); // TCP=6, UDP=17, ICMP=1 등
+
+		// Wellknown Protocol only now
+		if (ip->proto == 6) {
+			printf("이 패킷은 TCP 패킷입니다.\n");
+		} else if (ip->proto == 17) {
+			printf("이 패킷은 UDP 패킷입니다.\n");
+		} else if (ip->proto == 1) {
+			printf("이 패킷은 ICMP 패킷입니다.\n");
+		}
+
 
         printf("\n------------------------------------------\n");
 		if (packet_count >= 1) break; // 예시로 1개 패킷만 출력하도록 제한
