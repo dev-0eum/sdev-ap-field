@@ -85,6 +85,7 @@ int main(int argc, char* argv[]) {
 		u_short checksum;       // Checksum
 		u_short urgent_ptr;     // Urgent Pointer
 	} __attribute__((packed));
+	
 
 	printf("Packet Programming\n");
 	pcap_t* handle = pcap_open_offline("../pcapfiles/http-filtered-packet.pcap", errbuf);
@@ -157,7 +158,12 @@ int main(int argc, char* argv[]) {
 		printf("Source Port: %d\n", ntohs(tcp->src_port));
 		printf("Destination Port: %d\n", ntohs(tcp->dest_port));
 
-		
+		printf("\n[Payload] (first 20 bytes) \n");
+		// TCP 헤더 뒤에 실제 데이터(payload)가 위치하기에 offset 계산
+		u_char *payload = (u_char *)(packet + sizeof(struct EthHeader) + sizeof(struct IPv4Header) + sizeof(struct TCPHeader));
+		for (int i = 0; i < 20 && (payload + i) < (packet + header->caplen); i++) {
+			printf("%02x ", payload[i]);
+		}
 
 
         printf("\n------------------------------------------\n");
