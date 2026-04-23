@@ -1,3 +1,3 @@
-./pcapfiles/
-*.pcap
-./pcap-test/pcap-test
+/pcapfiles/*.pcap
+/pcap-test/pcap-test
+/pcap-test/pcap-test.o
