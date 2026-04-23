@@ -142,30 +142,28 @@ int main(int argc, char* argv[]) {
 		// Wellknown Protocol only now
 		if (ip->proto == 6) {
 			printf("이 패킷은 TCP 패킷입니다.\n");
+
+			printf("\n[TCP Header]\n");
+			// IPv4 헤더 뒤에 TCP 헤더가 위치하기에 offset 계산
+			struct TCPHeader *tcp = (struct TCPHeader *)(packet + sizeof(struct EthHeader) + sizeof(struct IPv4Header));
+			printf("Source Port: %d\n", ntohs(tcp->src_port));
+			printf("Destination Port: %d\n", ntohs(tcp->dest_port));
+
+			// data_offset_res의 상위 4비트에 4를 곱함
+			int tcp_header_len = (tcp->data_offset >> 4) * 4;
+			// TCP 헤더 뒤에 실제 데이터(payload)가 위치하기에 offset 계산
+			u_char *payload = (u_char *)(packet + sizeof(struct EthHeader) + sizeof(struct IPv4Header) + sizeof(struct TCPHeader) + (tcp_header_len - sizeof(struct TCPHeader)));
+			
+			printf("\n[Payload] (first 20 bytes) \n");
+			for (int i = 0; i < 20 && (payload + i) < (packet + header->caplen); i++) {
+				printf("%02x ", payload[i]);
+			}
+
 		} else if (ip->proto == 17) {
 			printf("이 패킷은 UDP 패킷입니다.\n");
 		} else if (ip->proto == 1) {
 			printf("이 패킷은 ICMP 패킷입니다.\n");
 		}
-		
-		printf("\n[TCP Header]\n");
-		// IPv4 헤더 뒤에 TCP 헤더가 위치하기에 offset 계산
-		struct TCPHeader *tcp = (struct TCPHeader *)(packet + sizeof(struct EthHeader) + sizeof(struct IPv4Header));
-		printf("Source Port: %d\n", ntohs(tcp->src_port));
-		printf("Destination Port: %d\n", ntohs(tcp->dest_port));
-		
-
-		// data_offset_res의 상위 4비트에 4를 곱함
-		int tcp_header_len = (tcp->data_offset >> 4) * 4;
-		// TCP 헤더 뒤에 실제 데이터(payload)가 위치하기에 offset 계산
-		u_char *payload = (u_char *)(packet + sizeof(struct EthHeader) + sizeof(struct IPv4Header) + sizeof(struct TCPHeader) + (tcp_header_len - sizeof(struct TCPHeader)));
-
-		printf("\n[Payload] (first 20 bytes) \n");
-		for (int i = 0; i < 20 && (payload + i) < (packet + header->caplen); i++) {
-			printf("%02x ", payload[i]);
-		}
-		
-		
         printf("\n------------------------------------------\n");
 	}
 	pcap_close(handle);
