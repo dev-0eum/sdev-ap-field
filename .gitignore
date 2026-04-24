@@ -1,3 +1,6 @@
 /pcapfiles/*.pcap
 /pcap-test/pcap-test
 /pcap-test/pcap-test.o
+pcap-test
+bin/
+*.o
