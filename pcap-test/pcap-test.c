@@ -64,30 +64,28 @@ int main(int argc, char* argv[]) {
 	char errbuf[PCAP_ERRBUF_SIZE];
 
 	// test code for debug
-	pcap_t* handle = pcap_open_offline("testfile/http-filtered-packet.pcap", errbuf);
-	if (handle == NULL) {
-		fprintf(stderr, "Couldn't open pcap file: %s\n", errbuf);
-		return -1;
-	}
-
-	// real environment code
-	// pcap_t* pcap = pcap_open_live(param.dev_, BUFSIZ, 1, 1000, errbuf);
-	// if (pcap == NULL) {
-	// 	fprintf(stderr, "pcap_open_live(%s) return null - %s\n", param.dev_, errbuf);
+	// pcap_t* handle = pcap_open_offline("testfile/http-filtered-packet.pcap", errbuf);
+	// if (handle == NULL) {
+	// 	fprintf(stderr, "Couldn't open pcap file: %s\n", errbuf);
 	// 	return -1;
 	// }
 
+	// real environment code
+	pcap_t* handle = pcap_open_live(param.dev_, BUFSIZ, 1, 1000, errbuf);
+	if (handle == NULL) {
+		fprintf(stderr, "pcap_open_live(%s) return null - %s\n", param.dev_, errbuf);
+		return -1;
+	}
 
+	// count packet number
 	int packet_count = 0;
 	while (true) {
 		struct pcap_pkthdr* header;
 		const u_char* packet;
-		// int res = pcap_next_ex(pcap, &header, &packet);
 		int res = pcap_next_ex(handle, &header, &packet);
 		if (res == 0) continue;
 		if (res == PCAP_ERROR || res == PCAP_ERROR_BREAK) {
 			printf("pcap_next_ex return %d(%s)\n", res, pcap_geterr(handle));
-			// printf("pcap_next_ex return %d(%s)\n", res, pcap_geterr(pcap));
 			break;
 		}
 		// check packet data
@@ -167,5 +165,4 @@ int main(int argc, char* argv[]) {
         printf("\n------------------------------------------\n");
 	}
 	pcap_close(handle);
-	// pcap_close(pcap);
 }
