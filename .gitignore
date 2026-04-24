@@ -1,3 +1,6 @@
+sum-nbo
+
+
 /pcapfiles/*.pcap
 /pcap-test/pcap-test
 /pcap-test/pcap-test.o
