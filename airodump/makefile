@@ -1,8 +1,8 @@
 LDLIBS += -lpcap
 
-all: wlan-80211
+all: airodump-test
 
-wlan-80211: wlan-80211.c
+airodump-test: airodump-test.c
 
 clean:
-	rm -f wlan-80211 *.o
+	rm -f airodump-test *.o

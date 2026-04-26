@@ -1,5 +1,4 @@
 *.o
 *.stash
 *.user
-pcap-test
-wlan-80211
+airodump-test

@@ -108,7 +108,7 @@ void process_ap(const uint8_t *bssid, const uint8_t *ssid_data, uint8_t ssid_len
             
             // 버퍼 강제 출력
             fflush(stdout); 
-            return; // 함수 종료
+            return;
         }
     }
 
@@ -120,8 +120,8 @@ void process_ap(const uint8_t *bssid, const uint8_t *ssid_data, uint8_t ssid_len
         ap_list[ap_count].beacon_count = 1; // 초기 카운트 1
         ap_list[ap_count].pwr = pwr; // 들어온 최신 패킷의 신호 세기로 갱신
         
-        printf("[New AP] BSSID: %02x:%02x:%02x:%02x:%02x:%02x | SSID: %-20s | Power: %4d dBm | Beacons: 1\n", \
-			bssid[0], bssid[1], bssid[2], bssid[3], bssid[4], bssid[5], temp_ssid, ap_list[ap_count].pwr);
+        printf("[New AP] BSSID: %02x:%02x:%02x:%02x:%02x:%02x | SSID: %-20s | Power: %4d dBm | Beacons: %4d\n", \
+			bssid[0], bssid[1], bssid[2], bssid[3], bssid[4], bssid[5], temp_ssid, ap_list[ap_count].pwr, 1);
 
         ap_count++;
     } else {
@@ -134,9 +134,9 @@ int main(int argc, char* argv[]) {
 		return -1;
 
 	char errbuf[PCAP_ERRBUF_SIZE];
-	pcap_t* pcap = pcap_open_offline("pcapfile/mon0_wlan.pcapng", errbuf);
+	pcap_t* pcap = pcap_open_live(param.dev_, BUFSIZ, 1, 1000, errbuf);
 	if (pcap == NULL) {
-		fprintf(stderr, "pcap_open_offline(%s) return null - %s\n", param.dev_, errbuf);
+		fprintf(stderr, "pcap_open_live(%s) return null - %s\n", param.dev_, errbuf);
 		return -1;
 	}
 
@@ -150,8 +150,6 @@ int main(int argc, char* argv[]) {
 			// 에러 또는 파일 끝에 도달한 경우 루프 종료
 			break;
 		}
-
-        // printf("\n[Packet #%d] Length: %u bytes\n", ++packet_count, header->caplen);
         
 		// Radiotap Header
 		struct RadioTapHeader *rtap = (struct RadioTapHeader *)packet;
@@ -168,7 +166,6 @@ int main(int argc, char* argv[]) {
 		struct tag_param *tag = (struct tag_param *)(packet + rtap->len + sizeof(struct _80211Header) + sizeof(struct fixed_param));
 		uint8_t *data = (uint8_t *)(packet + rtap->len + sizeof(struct _80211Header) + sizeof(struct fixed_param) + sizeof(struct tag_param)); // 태그 번호(1바이트) + 태그 길이(1바이트) 이후부터 데이터 시작
 		
-		// printf("\n------------------------------------------\n");
 		if (tag->number == 0) { // SSID 발견
 			// 리스트 업데이트 함수 호출
 			process_ap(wifi->bssid, data, tag->length, rtap->pwr);
