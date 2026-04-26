@@ -102,7 +102,7 @@ void process_ap(const uint8_t *bssid, const uint8_t *ssid_data, uint8_t ssid_len
 			ap_list[i].pwr = pwr; // 들어온 최신 패킷의 신호 세기로 갱신
             
             // 화면 갱신을 위해 캐리지 리턴(\r) 사용 (한 줄에서 업데이트)
-            printf("\r[Update] BSSID: %02x:%02x:%02x:%02x:%02x:%02x | SSID: %-15s | Power: %4d dBm | Beacons: %4d",\
+            printf("\r[Update] BSSID: %02x:%02x:%02x:%02x:%02x:%02x | SSID: %-20s | Power: %4d dBm | Beacons: %4d\n",\
 				bssid[0], bssid[1], bssid[2], bssid[3], bssid[4], bssid[5],\
 				temp_ssid, ap_list[i].pwr, ap_list[i].beacon_count);
             
@@ -119,8 +119,8 @@ void process_ap(const uint8_t *bssid, const uint8_t *ssid_data, uint8_t ssid_len
         strncpy(ap_list[ap_count].ssid, temp_ssid, MAX_SSID_LEN);
         ap_list[ap_count].beacon_count = 1; // 초기 카운트 1
         ap_list[ap_count].pwr = pwr; // 들어온 최신 패킷의 신호 세기로 갱신
-        // 새 AP는 개행(\n)을 포함하여 눈에 띄게 출력
-        printf("\n[New AP] BSSID: %02x:%02x:%02x:%02x:%02x:%02x | SSID: %-15s | Power: %4d dBm | Beacons: 1\n", \
+        
+        printf("[New AP] BSSID: %02x:%02x:%02x:%02x:%02x:%02x | SSID: %-20s | Power: %4d dBm | Beacons: 1\n", \
 			bssid[0], bssid[1], bssid[2], bssid[3], bssid[4], bssid[5], temp_ssid, ap_list[ap_count].pwr);
 
         ap_count++;
@@ -147,26 +147,14 @@ int main(int argc, char* argv[]) {
 		int res = pcap_next_ex(pcap, &header, &packet);
 		if (res == 0) continue;
 		if (res == PCAP_ERROR || res == PCAP_ERROR_BREAK) {
-			printf("pcap_next_ex return %d(%s)\n", res, pcap_geterr(pcap));
+			// 에러 또는 파일 끝에 도달한 경우 루프 종료
 			break;
 		}
-		// printf("%u bytes captured\n", header->caplen);
-		// My code
-        printf("\n[Packet #%d] Length: %u bytes\n", ++packet_count, header->caplen);
-        
-        // // --- 여기서부터 1바이트씩 읽고 출력하는 핵심 로직 ---
-        // for (u_int i = 0; i < header->caplen; i++) {
-		// 	// 1바이트씩 16진수로 출력
-        //     printf("%02x ", packet[i]);
-			
-        //     // 가독성을 위해 16바이트마다 줄바꿈
-        //     if ((i + 1) % 16 == 0) printf("\n");
-        // }
-		// printf("\n------------------------------------------\n");
 
+        // printf("\n[Packet #%d] Length: %u bytes\n", ++packet_count, header->caplen);
+        
 		// Radiotap Header
 		struct RadioTapHeader *rtap = (struct RadioTapHeader *)packet;
-		// printf("Power: %d dBm\n", (signed char)(rtap->pwr));
 
 		// 802.11 Header
 		struct _80211Header *wifi = (struct _80211Header *)(packet + rtap->len);
@@ -174,32 +162,17 @@ int main(int argc, char* argv[]) {
 		} else { 
 			continue; // 다음 패킷으로 넘어감
 		}
-
-		printf("BSSID: %02x:%02x:%02x:%02x:%02x:%02x\n", wifi->bssid[0], wifi->bssid[1], wifi->bssid[2], wifi->bssid[3], wifi->bssid[4], wifi->bssid[5]);
 		
 		// Fixed Parameters와 Tagged Parameters
 		struct fixed_param *fixed = (struct fixed_param *)(packet + rtap->len + sizeof(struct _80211Header));
 		struct tag_param *tag = (struct tag_param *)(packet + rtap->len + sizeof(struct _80211Header) + sizeof(struct fixed_param));
-
-		printf("SSID: ");
 		uint8_t *data = (uint8_t *)(packet + rtap->len + sizeof(struct _80211Header) + sizeof(struct fixed_param) + sizeof(struct tag_param)); // 태그 번호(1바이트) + 태그 길이(1바이트) 이후부터 데이터 시작
-		for (int i = 0; i < tag->length; i++) {
-			printf("%c", data[i]);
-		}
-
-		printf("\n------------------------------------------\n");
+		
+		// printf("\n------------------------------------------\n");
 		if (tag->number == 0) { // SSID 발견
 			// 리스트 업데이트 함수 호출
 			process_ap(wifi->bssid, data, tag->length, rtap->pwr);
 		}
-
-		// if (packet_count >= 1) { // test
-		// 	printf("1 packets captured, stopping...\n");
-		// 	break;
-		// }
-
-
-		}
-
+	}
 	pcap_close(pcap);
 }

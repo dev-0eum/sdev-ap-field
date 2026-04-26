@@ -1,8 +1,8 @@
 LDLIBS += -lpcap
 
-all: pcap-test
+all: wlan-80211
 
-pcap-test: pcap-test.c
+wlan-80211: wlan-80211.c
 
 clean:
-	rm -f pcap-test *.o
+	rm -f wlan-80211 *.o
