@@ -8,7 +8,7 @@
 #define MAX_SSID_LEN 32    // 802.11 규격상 최대 SSID 길이
 
 void usage() {
-	printf("syntax: pcap-test <interface>\n");
+	printf("syntax:  <interface>\n");
 	printf("sample: pcap-test wlan0\n");
 }
 
@@ -34,7 +34,7 @@ struct RadioTapHeader {
     uint8_t  version;  // Header revision (항상 0)
     uint8_t  pad;      // Header pad
     uint16_t len;      // 전체 Radiotap 헤더 길이
-    uint32_t present[3];  // 뒤에 어떤 필드가 오는지 알려주는 비트마스크 (Present flags)
+    uint32_t present[3];  // 뒤에 어떤 필드가 오는지 알려주는 비트마스크 (Present flags) // MSB 값으로 다음 있는지 판단
 
 	uint64_t timestamp;
 	uint8_t  flags;
@@ -64,17 +64,17 @@ struct tag_param {
 	uint8_t number;
 	uint8_t length;
 };
-
-struct ap_node {
-    uint8_t bssid[MAC_LEN];
-    char ssid[MAX_SSID_LEN + 1]; // 문자열 출력을 위한 NULL 문자 공간 포함
-	int8_t pwr;
-    int beacon_count;
-};
 #pragma pack(pop)
 
+struct ap_node {
+    uint8_t bssid[MAC_LEN]; // key
+    char ssid[MAX_SSID_LEN + 1]; // 문자열 출력을 위한 NULL 문자 공간 포함 // value
+	int8_t pwr; // value
+    int beacon_count; // value
+};
 
-struct ap_node ap_list[MAX_APS];
+
+struct ap_node ap_list[MAX_APS]; // static하게 말고 list로 추가할 수 있게 --> 특히 메모리 공간 활용 고려할 것.
 int ap_count = 0;
 
 void process_ap(const uint8_t *bssid, const uint8_t *ssid_data, uint8_t ssid_len, int8_t pwr) {
@@ -92,7 +92,7 @@ void process_ap(const uint8_t *bssid, const uint8_t *ssid_data, uint8_t ssid_len
     temp_ssid[len] = '\0'; // 문자열 끝 지정
 
     // 3. 기존 리스트에서 (BSSID, SSID) 쌍 검색
-    for (int i = 0; i < ap_count; i++) {
+    for (int i = 0; i < ap_count; i++) { // for문 --> key-value (std::map)으로 전환
         // BSSID가 일치하고 SSID도 일치하는지 확인
         if (memcmp(ap_list[i].bssid, bssid, MAC_LEN) == 0 &&
             strcmp(ap_list[i].ssid, temp_ssid) == 0) {
@@ -134,7 +134,8 @@ int main(int argc, char* argv[]) {
 		return -1;
 
 	char errbuf[PCAP_ERRBUF_SIZE];
-	pcap_t* pcap = pcap_open_live(param.dev_, BUFSIZ, 1, 1000, errbuf);
+	// readwrite 1000ms timeout --> 패킷이 들어올 때까지 최대 1초 대기 | 1ms이면
+	pcap_t* pcap = pcap_open_live(param.dev_, BUFSIZ, 1, 1, errbuf);
 	if (pcap == NULL) {
 		fprintf(stderr, "pcap_open_live(%s) return null - %s\n", param.dev_, errbuf);
 		return -1;
@@ -164,6 +165,9 @@ int main(int argc, char* argv[]) {
 		// Fixed Parameters와 Tagged Parameters
 		struct fixed_param *fixed = (struct fixed_param *)(packet + rtap->len + sizeof(struct _80211Header));
 		struct tag_param *tag = (struct tag_param *)(packet + rtap->len + sizeof(struct _80211Header) + sizeof(struct fixed_param));
+
+		// tagNum이 0인 태그가 가장 먼저온다는 경우는 아니다
+		// tagNum이 0인 태그가 가장 먼저온다는 보장이 없으므로, 태그 번호가 0인 태그를 찾을 때까지 반복해서 태그를 읽어야 한다.
 		uint8_t *data = (uint8_t *)(packet + rtap->len + sizeof(struct _80211Header) + sizeof(struct fixed_param) + sizeof(struct tag_param)); // 태그 번호(1바이트) + 태그 길이(1바이트) 이후부터 데이터 시작
 		
 		if (tag->number == 0) { // SSID 발견
