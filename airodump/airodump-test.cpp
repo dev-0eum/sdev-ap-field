@@ -114,7 +114,7 @@ struct BeaconHdr : public _80211Hdr {
         void value(const uint8_t* data) const {
             printf("Tag[%d] Data: ", number);
             for (int i = 0; i < length; i++) {
-                printf("%02x ", data[i]);
+                printf("%c", data[i]);
             }
             printf("\n");
         }
@@ -162,24 +162,48 @@ int main(int argc, char *argv[]) {
 
         // Radiotap Header
 		RadioTapHdr *rtap = (struct RadioTapHdr *)packet;
-        // 802.11 Header
-		_80211Hdr *wifi = (struct _80211Hdr *)(packet + rtap->len_);
-		// 802.11 프레임이 Beacon인지 확인
-        if (!wifi->is_beacon()) continue;
-        wifi->print_info();
 
-        // CHECK How to use the herited struct
-        // tagged parameter에서 SSID 정보 추출
-        BeaconHdr::fixed_param *fixed = (struct BeaconHdr::fixed_param *)(packet + rtap->len_ + sizeof(BeaconHdr));
-        cout << "Timestamp: " << fixed->timestamp << endl; // 타임스탬프
-        BeaconHdr::tag_param *tag = (struct BeaconHdr::tag_param *)(packet + rtap->len_ + sizeof(BeaconHdr) + sizeof(BeaconHdr::fixed_param));
-        // BeaconHdr::tag_param *tag = beacon->first_tag();
-        tag->print_tag_info();
+        // // 802.11 Header
+		// _80211Hdr *wifi = (struct _80211Hdr *)(packet + rtap->len_);
+		// // 802.11 프레임이 Beacon인지 확인
+        // if (!wifi->is_beacon()) continue;
+        // wifi->print_info();
 
-        while (tag->number != 5) { // SSID 태그가 나올 때까지 반복
-            tag->print_tag_info();
-            tag->value((uint8_t*)tag + sizeof(BeaconHdr::tag_param)); // 태그 데이터 출력
+        // // CHECK How to use the inherited struct
+        // // tagged parameter에서 SSID 정보 추출
+        // BeaconHdr::fixed_param *fixed = (struct BeaconHdr::fixed_param *)(packet + rtap->len_ + sizeof(BeaconHdr));
+        // cout << "Timestamp: " << fixed->timestamp << endl; // 타임스탬프
+        // BeaconHdr::tag_param *tag = (struct BeaconHdr::tag_param *)(packet + rtap->len_ + sizeof(BeaconHdr) + sizeof(BeaconHdr::fixed_param));
+        // // BeaconHdr::tag_param *tag = beacon->first_tag();
+        // tag->print_tag_info();
+
+        // while (tag->number != 5) { // SSID 태그가 나올 때까지 반복
+        //     tag->print_tag_info();
+        //     tag->value((uint8_t*)tag + sizeof(BeaconHdr::tag_param)); // 태그 데이터 출력
+        //     tag = tag->next();
+        // }
+
+        // 1. 단번에 BeaconHdr로 캐스팅 (부모, 자식 함수 모두 사용 가능)
+        BeaconHdr *beacon = (BeaconHdr *)(packet + rtap->len_);
+
+        if (!beacon->is_beacon()) continue;
+        beacon->print_info();
+
+        // 수동 계산 대신 깔끔하게 메서드 호출!
+        BeaconHdr::tag_param *tag = beacon->first_tag(); 
+
+        // 3. 안전한 루프 탈출 조건 (pcap 헤더의 caplen 등 패킷의 끝 위치를 반드시 활용)
+        const uint8_t* packet_end = packet + header->caplen; 
+
+        // 패킷 끝을 넘지 않고, 원하는 태그(예: SSID인 0번)를 찾을 때까지 반복
+        while ((uint8_t*)tag < packet_end && tag->number != 0) { 
             tag = tag->next();
+        }
+
+        // 루프를 무사히 빠져나왔고, 그것이 우리가 찾는 태그라면 출력
+        if ((uint8_t*)tag < packet_end && tag->number == 0) {
+            tag->print_tag_info();
+            tag->value((uint8_t*)tag + sizeof(BeaconHdr::tag_param));
         }
 
 
