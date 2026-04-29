@@ -212,9 +212,9 @@ int main(int argc, char *argv[]) {
 		return -1;
 
 	char errbuf[PCAP_ERRBUF_SIZE];
-	pcap_t* pcap = pcap_open_offline("./pcapfile/mon0_wlan.pcapng", errbuf);
+	pcap_t* pcap = pcap_open_live(param.dev_, BUFSIZ, 1, 1, errbuf);
 	if (pcap == NULL) {
-		fprintf(stderr, "pcap_open_offline() return null - %s\n", errbuf);
+		fprintf(stderr, "pcap_open_live() return null - %s\n", errbuf);
 		return -1;
 	}
 
