@@ -7,6 +7,7 @@ extern "C" {
 #include <vector>
 #include <map>
 #include <string>
+#include "radiohdr-field.h"
 
 using namespace std;
 
@@ -33,12 +34,52 @@ bool parse(Param* param, int argc, char* argv[]) {
 }
 
 #pragma pack(push, 1)
-typedef struct RadioTapHdr {
-    uint8_t  version_;  // Header revision (항상 0)
-    uint8_t  pad_;      // Header pad
-    uint16_t len_;      // 전체 Radiotap 헤더 길이
-    uint32_t present_;  // 뒤에 어떤 필드가 오는지 알려주는 비트마스크 (Present flags) // MSB 값으로 다음 있는지 판단
-} RadioTapHdr;
+struct RadioTapHdr {
+    uint8_t  version_;
+    uint8_t  pad_;
+    uint16_t len_;
+    uint32_t present_;
+
+    int8_t get_pwr() const {
+        // 1. MSB(Ext 비트) 확인 및 초기 오프셋 계산
+        size_t offset = 8; 
+        const uint32_t* next_present = &present_;
+        
+        while ((*next_present & 0x80000000) != 0) {
+            offset += 4;
+            next_present++;
+        }
+
+        // 2. Antenna Signal 필드가 존재하는지 비트 마스크로 확인
+        // (1 << RT_ANTENNA_SIGNAL) 은 0x20과 동일합니다.
+        if ((present_ & (1 << RT_ANTENNA_SIGNAL)) == 0) {
+            return 0; 
+        }
+
+        // 3. 0번 비트부터 타겟 비트(Antenna Signal) '직전'까지 반복하며 오프셋 누적
+        for (int i = 0; i < RT_ANTENNA_SIGNAL; ++i) {
+            // 현재 검사 중인 비트(i)가 켜져 있다면
+            if (present_ & (1 << i)) {
+                size_t align = RT_FIELD_INFO[i].align;
+                size_t size  = RT_FIELD_INFO[i].size;
+
+                // 정렬(Alignment) 맞추기 공식
+                offset = (offset + (align - 1)) & ~(align - 1);
+                
+                // 크기(Size) 더하기
+                offset += size;
+            }
+        }
+
+        // 4. 타겟(Antenna Signal)을 읽기 직전, 해당 필드의 정렬 수행
+        size_t target_align = RT_FIELD_INFO[RT_ANTENNA_SIGNAL].align;
+        offset = (offset + (target_align - 1)) & ~(target_align - 1);
+
+        // 5. signal 값 반환
+        const uint8_t* base_ptr = reinterpret_cast<const uint8_t*>(this);
+        return static_cast<int8_t>(base_ptr[offset]);
+    }
+};
 
 struct MAC{
     uint8_t addr[6];
@@ -210,7 +251,7 @@ int main(int argc, char *argv[]) {
             tag->value((uint8_t*)tag + sizeof(BeaconHdr::tag_param));
         }
 
-        process_beacon(beacon->bssid(), tag->number == 0 ? string((char*)(tag + 1), tag->length) : "", /*pwr*/0); // pwr는 예시로 0, 실제로는 Radiotap에서 읽어와야 함
+        process_beacon(beacon->bssid(), tag->number == 0 ? string((char*)(tag + 1), tag->length) : "", rtap->get_pwr()); // pwr는 예시로 0, 실제로는 Radiotap에서 읽어와야 함
 
         cout << endl;
     }
