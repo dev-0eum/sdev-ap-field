@@ -7,6 +7,8 @@ extern "C" {
 #include <vector>
 #include <map>
 #include <string>
+#include <cstring>
+#include <time.h>
 #include "radiohdr-field.h"
 
 using namespace std;
@@ -218,6 +220,8 @@ int main(int argc, char *argv[]) {
 		return -1;
 	}
 
+    // 화면 갱신을 위한 시간 체크 변수
+    time_t last_print_time = time(NULL);
     while (true) {
 		struct pcap_pkthdr* header;
 		const u_char* packet;
@@ -232,7 +236,6 @@ int main(int argc, char *argv[]) {
 		RadioTapHdr *rtap = (struct RadioTapHdr *)packet; // Radiotap Header
         BeaconHdr *beacon = (BeaconHdr *)(packet + rtap->len_);  // BeaconHdr Casting
         if (!beacon->is_beacon()) continue; // Check if it's a beacon frame
-        beacon->print_info(); // BSSID 출력
 
         // 수동 계산 대신 깔끔하게 메서드 호출!
         BeaconHdr::tag_param *tag = beacon->first_tag(); 
@@ -245,19 +248,15 @@ int main(int argc, char *argv[]) {
             tag = tag->next();
         }
 
-        // 루프를 무사히 빠져나왔고, 그것이 우리가 찾는 태그라면 출력
-        if ((uint8_t*)tag < packet_end && tag->number == 0) {
-            tag->print_tag_info();
-            tag->value((uint8_t*)tag + sizeof(BeaconHdr::tag_param));
-        }
-
         process_beacon(beacon->bssid(), tag->number == 0 ? string((char*)(tag + 1), tag->length) : "", rtap->get_pwr()); // pwr는 예시로 0, 실제로는 Radiotap에서 읽어와야 함
 
-        cout << endl;
+        // 화면 갱신 로직 추가
+        time_t current_time = time(NULL);
+        if (current_time - last_print_time >= 1) { // 1초가 경과했으면
+            print_ap_list(); // 맵 출력
+            last_print_time = current_time; // 마지막 출력 시간 갱신
+        }
     }
-
-    print_ap_list(); // AP 리스트 출력
-
-	cout << "End Program" << endl;
+    pcap_close(pcap);
 	return 0;
 }
