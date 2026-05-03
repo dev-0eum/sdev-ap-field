@@ -7,3 +7,4 @@ sum-nbo
 pcap-test
 bin/
 *.o
+deauth-attack
