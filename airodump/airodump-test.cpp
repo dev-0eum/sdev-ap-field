@@ -9,6 +9,9 @@ extern "C" {
 #include <string>
 #include <cstring>
 #include <time.h>
+#include <mutex>
+#include <thread>
+#include <chrono>
 #include "radiohdr-field.h"
 
 using namespace std;
@@ -86,8 +89,17 @@ struct RadioTapHdr {
 struct MAC{
     uint8_t addr[6];
 
+    MAC(std::string s);
+    static MAC from_string(const string& mac_str);
+    // explicit operator std::string const;
+
     bool operator<(const MAC& other) const {
         return memcmp(addr, other.addr, 6) < 0; // BSSID 비교를 위한 연산자 오버로딩
+    }
+
+    // bssid와 ssid를 출력하는 함수
+    void print_bssid() const {
+        printf("BSSID: %02x:%02x:%02x:%02x:%02x:%02x\n", addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
     }
 };
 
@@ -95,9 +107,9 @@ typedef struct Dot11Hdr {
     uint8_t subtype_; // 패킷 종류와 플래그 (길이 변화의 핵심)
 	uint8_t  ver_type_; // 패킷 종류와 플래그 (길이 변화의 핵심)
     uint16_t duration_id_;
-    MAC  dest_;
-    MAC  src_;
-    MAC  bssid_;
+    MAC  addr_1; // receiver
+    MAC  addr_2; // transmitter
+    MAC  addr_3; // 프로토콜마다 다르다
     uint16_t seq_control_;
 
     public:
@@ -106,16 +118,13 @@ typedef struct Dot11Hdr {
         return (subtype_ == 0x80) && (ver_type_ == 0x00);
     }
 
-    // bssid와 ssid를 출력하는 함수
-    void print_info() const {
-        printf("BSSID: %02x:%02x:%02x:%02x:%02x:%02x\n", bssid_.addr[0], bssid_.addr[1], bssid_.addr[2], bssid_.addr[3], bssid_.addr[4], bssid_.addr[5]);
-    }
+    
 } Dot11Hdr;
 
 struct BeaconHdr : public Dot11Hdr {
-    MAC dest() const { return dest_; }
-    MAC src() const { return src_; }
-    MAC bssid() const { return bssid_; }
+    MAC dest() const { return addr_1; }
+    MAC src() const { return addr_2; }
+    MAC bssid() const { return addr_3; }
     
     struct fixed_param {
         uint64_t timestamp; // 타임스탬프
@@ -157,8 +166,11 @@ struct ap_node {
     int beaconCount_;
 };
 
+mutex m_lock;
 map<MAC, ap_node> ap_list; // BSSID를 key로, ap_node를 value로 하는 맵
 void process_beacon(MAC current_bssid, string current_ssid, int8_t current_pwr) {
+    m_lock.lock(); // 맵을 수정하기 전에 자물쇠 잠금
+
     // 1. 맵에서 현재 BSSID가 이미 존재하는지 검색
     auto it = ap_list.find(current_bssid);
 
@@ -181,6 +193,8 @@ void process_beacon(MAC current_bssid, string current_ssid, int8_t current_pwr) 
         // ap_list[current_bssid] = new_ap; 
         ap_list.insert({current_bssid, new_ap});
     }
+
+    m_lock.unlock(); // 수정이 끝났으니 자물쇠 풀기
 }
 
 void print_ap_list() {
@@ -197,9 +211,7 @@ void print_ap_list() {
         const ap_node& info = pair.second;
 
         // BSSID 출력 (MAC 주소 포맷팅)
-        printf(" %02X:%02X:%02X:%02X:%02X:%02X  ", 
-            bssid.addr[0], bssid.addr[1], bssid.addr[2], 
-            bssid.addr[3], bssid.addr[4], bssid.addr[5]);
+        bssid.print_bssid();
 
         // Power, Beacon, SSID 출력
         printf("%4d  %8d    %s\n", 
@@ -209,19 +221,39 @@ void print_ap_list() {
     }
 }
 
+void print_thread_func() {
+    while (true) {
+        // 1초 대기
+        std::this_thread::sleep_for(std::chrono::seconds(1)); 
+        
+        // 화면을 그리기 전에 자물쇠를 잠금 (다른 곳에서 ap_list 수정 금지)
+        m_lock.lock(); 
+        cout << "threading..." << endl; // 디버깅용 출력
+        print_ap_list(); // 화면 갱신
+        m_lock.unlock(); // 자물쇠 풀기
+    }
+}
+
 int main(int argc, char *argv[]) {
 	if (!parse(&param, argc, argv))
 		return -1;
 
 	char errbuf[PCAP_ERRBUF_SIZE];
-	pcap_t* pcap = pcap_open_live(param.dev_, BUFSIZ, 1, 1, errbuf);
+	pcap_t* pcap = pcap_open_offline("./pcapfile/mon0_wlan.pcapng", errbuf);
 	if (pcap == NULL) {
-		fprintf(stderr, "pcap_open_live() return null - %s\n", errbuf);
+		fprintf(stderr, "pcap_open_offline() return null - %s\n", errbuf);
 		return -1;
 	}
 
+    // 4. 화면 그리는 백그라운드 스레드 출동!
+    cout << "Starting print thread..." << endl; // 디버깅용 출력
+    std::thread printer(print_thread_func);
+    printer.detach(); // 메인 루프와 상관없이 혼자 계속 돌도록 분리
+    cout << "Print thread started." << endl; // 디버깅용 출력
+
+
     // 화면 갱신을 위한 시간 체크 변수
-    time_t last_print_time = time(NULL);
+    // time_t last_print_time = time(NULL);
     while (true) {
 		struct pcap_pkthdr* header;
 		const u_char* packet;
@@ -251,11 +283,12 @@ int main(int argc, char *argv[]) {
         process_beacon(beacon->bssid(), tag->number == 0 ? string((char*)(tag + 1), tag->length) : "", rtap->get_pwr()); // pwr는 예시로 0, 실제로는 Radiotap에서 읽어와야 함
 
         // 화면 갱신 로직 추가
-        time_t current_time = time(NULL);
-        if (current_time - last_print_time >= 1) { // 1초가 경과했으면
-            print_ap_list(); // 맵 출력
-            last_print_time = current_time; // 마지막 출력 시간 갱신
-        }
+        // time_t current_time = time(NULL);
+        // if (current_time - last_print_time >= 1) { // 1초가 경과했으면
+        //     print_ap_list(); // 맵 출력
+        //     last_print_time = current_time; // 마지막 출력 시간 갱신
+        // }
+
     }
     pcap_close(pcap);
 	return 0;

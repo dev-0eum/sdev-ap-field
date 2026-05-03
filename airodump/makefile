@@ -1,6 +1,6 @@
 CXX = g++
-CXXFLAGS = -Wall -std=c++11 
-LDLIBS += -lpcap
+CXXFLAGS = -Wall -std=c++11 -pthread
+LDLIBS += -lpcap -pthread
 
 all: airodump-test
 
