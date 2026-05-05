@@ -60,11 +60,6 @@ struct RadioTapHdr {
     uint32_t present_ = 0x00000000; // 0x00000000이면 안됨.
 };
 
-// struct SendRadioTapHdr : public RadioTapHdr {
-//     uint16_t len_ = 8;
-//     uint32_t present_ = 0x00000000;
-// };
-
 struct Mac{
     uint8_t addr[6];
 
