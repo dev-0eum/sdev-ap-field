@@ -56,14 +56,14 @@ bool parse(Param* param, int argc, char* argv[]) {
 struct RadioTapHdr {
     uint8_t  version_ = 0x00;
     uint8_t  pad_ = 0x00;
-    uint16_t len_ = 12; // 기본 Radiotap 헤더 길이 (8바이트 고정 + 4바이트 present 필드)
-    uint32_t present_ = 0x00000020; // 0x00000000이면 안됨.
+    uint16_t len_ = 8; // 기본 Radiotap 헤더 길이 (8바이트 고정 + 4바이트 present 필드)
+    uint32_t present_ = 0x00000000; // 0x00000000이면 안됨.
 };
 
-struct SendRadioTapHdr : public RadioTapHdr {
-    uint16_t len_ = 8;
-    uint32_t present_ = 0x00000000;
-};
+// struct SendRadioTapHdr : public RadioTapHdr {
+//     uint16_t len_ = 8;
+//     uint32_t present_ = 0x00000000;
+// };
 
 struct Mac{
     uint8_t addr[6];
@@ -149,7 +149,7 @@ struct DeauthFrame : public Dot11Hdr {
 
 // 최종적으로 메모리에 올릴 전체 패킷 구조체
 struct DeauthPacket {
-    SendRadioTapHdr rtap; // 8byte + 4byte (present 필드) = 12byte
+    RadioTapHdr rtap; // 8byte + 4byte (present 필드) = 12byte
     DeauthFrame deauth; // 24byte (MAC 헤더) + 2byte (Reason Code) = 26byte
 
     DeauthPacket(Mac dest, Mac src, Mac bssid) : deauth(dest, src, bssid) {}
@@ -157,8 +157,9 @@ struct DeauthPacket {
 #pragma pack(pop)
 
 int main(int argc, char *argv[]) {
-    if (!parse(&param, argc, argv))
+    if (!parse(&param, argc, argv)){
         return -1;
+    }
 
 	char errbuf[PCAP_ERRBUF_SIZE];
     pcap_t* pcap = pcap_open_live(param.dev_.c_str(), BUFSIZ, 1, 1000, errbuf);
