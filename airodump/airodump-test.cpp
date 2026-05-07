@@ -158,6 +158,7 @@ struct BeaconHdr : public Dot11Hdr {
     }
 
 };
+typedef BeaconHdr* PBeaconHdr;
 #pragma pack(pop)
 
 struct ap_node {
@@ -266,7 +267,7 @@ int main(int argc, char *argv[]) {
 
         // Header Prasing
 		RadioTapHdr *rtap = (struct RadioTapHdr *)packet; // Radiotap Header
-        BeaconHdr *beacon = (BeaconHdr *)(packet + rtap->len_);  // BeaconHdr Casting
+        BeaconHdr *beacon = PBeaconHdr(packet + rtap->len_);  // BeaconHdr Casting
         if (!beacon->is_beacon()) continue; // Check if it's a beacon frame
 
         // 수동 계산 대신 깔끔하게 메서드 호출!
