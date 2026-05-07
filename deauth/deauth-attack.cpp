@@ -18,22 +18,23 @@
 
 using namespace std;
 
-void usage() {
-	printf("syntax : deauth-attack <interface> <ap mac> [<station mac>]\n");
-	printf("sample : deauth-attack mon0 00:11:22:33:44:55 66:77:88:99:AA:BB\n");
-}
 
 struct Param { // shallow copy로 충분한 간단한 구조체이므로 포인터 대신 string으로 바로 저장
 	string dev_ = "";          // 인터페이스 (wlan0, mon0 등)
     string ap_mac_ = "";       // AP의 MAC 주소
     string station_mac_ = "";  // Station(단말기)의 MAC 주소 (선택)
+
+    static void usage() {
+        printf("syntax : deauth-attack <interface> <ap mac> [<station mac>]\n");
+        printf("sample : deauth-attack mon0 00:11:22:33:44:55 66:77:88:99:AA:BB\n");
+    }
 } param;
 
 
 bool parse(Param* param, int argc, char* argv[]) {
     // 최소 실행 파일(argv[0]), 인터페이스(argv[1]), AP MAC(argv[2])이 필요하므로 argc는 최소 3이어야 함
     if (argc < 3 || argc > 5) {
-        usage();
+        Param::usage();
         return false;
     }
 
@@ -153,6 +154,7 @@ struct DeauthPacket {
 
 int main(int argc, char *argv[]) {
     if (!parse(&param, argc, argv)){
+        Param::usage();
         return -1;
     }
 
