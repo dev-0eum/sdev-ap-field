@@ -26,11 +26,12 @@ bool parse(Param* param, int argc, char* argv[]) {
 }
 
 // Define struct
+#pragma pack(push, 1) // 구조체 간 패딩 제거 --> __attribute__((packed))는 linux 의존적
 struct EthHeader {
 	uint8_t dest_mac[6];
 	uint8_t src_mac[6];
 	uint16_t type;
-} __attribute__((packed)); // 메모리 최적화 위한 패딩 제거
+}; // __attribute__((packed)); // 메모리 최적화 위한 패딩 제거
 
 struct IPv4Header {
 	uint8_t ver_ihl;			// Version + Internet Header Length
@@ -41,9 +42,9 @@ struct IPv4Header {
 	uint8_t  ttl;            // Time to Live
 	uint8_t  proto;          // Protocol (TCP=6, UDP=17, ICMP=1 등)
 	uint16_t checksum;            // Header Checksum
-	uint8_t  src_ip[4];         // Source IP Address
+	uint8_t  src_ip[4];         // Source IP Address --> mrtg 측면에서는 32byte가 좋지만 출력을 위해선 8byte가 용이
 	uint8_t  dest_ip[4];        // Destination IP Address
-} __attribute__((packed));
+}; // __attribute__((packed));
 
 struct TCPHeader {
 	uint16_t src_port;        // Source Port
@@ -55,7 +56,8 @@ struct TCPHeader {
 	uint16_t window;         // Window Size
 	uint16_t checksum;       // Checksum
 	uint16_t urgent_ptr;     // Urgent Pointer
-} __attribute__((packed));
+}; //__attribute__((packed));
+#pragma pack(pop)
 
 int main(int argc, char* argv[]) {
 	if (!parse(&param, argc, argv))
@@ -103,6 +105,7 @@ int main(int argc, char* argv[]) {
             if ((i + 1) % 16 == 0) printf("\n");
         }
 		
+		
 		printf("\n------------------------------------------\n");
 		printf("[Ethernet Header]\n");
 		
@@ -110,8 +113,9 @@ int main(int argc, char* argv[]) {
 		struct EthHeader *eth = (struct EthHeader *)packet;
 		
 		printf("Source MAC: ");
+		// print_mac func
 		for (int i = 0; i < 6; i++) {
-			printf("%02x", eth->src_mac[i]);
+			printf("%02x", eth->src_mac[i]); // dest_mac과 같이 중복되는 부분은 함수로 빼면 좋음
 			if (i < 5) printf(":");
 		}
 		
@@ -124,10 +128,13 @@ int main(int argc, char* argv[]) {
 		
 		// 타입 확인 (0x0800이면 IPv4, 0x0806이면 ARP 등)
 		// 네트워크 바이트 순서(Big-endian)이므로 ntohs()로 변환 필요
-		if (ntohs(eth->type) == 0x0800) {
+		if (ntohs(eth->type) == 0x0800) { // eth->type == 0x0008 이면 더 빠른 연산
 			printf("이 패킷은 IPv4 패킷입니다.\n");
 		} else if (ntohs(eth->type) == 0x0806){
 			printf("이 패킷은 ARP 패킷입니다.\n");
+			continue;
+			// break; --> while do for switch
+			// continue; --> while do for
 		}
 		
 		printf("\n[IPv4 Header]\n");
@@ -138,29 +145,35 @@ int main(int argc, char* argv[]) {
 		printf("Protocol: %d\n", ip->proto); // TCP=6, UDP=17, ICMP=1 등
 		
 		// Wellknown Protocol only now
-		if (ip->proto == 6) {
-			printf("이 패킷은 TCP 패킷입니다.\n");
-
-			printf("\n[TCP Header]\n");
-			// IPv4 헤더 뒤에 TCP 헤더가 위치하기에 offset 계산
-			struct TCPHeader *tcp = (struct TCPHeader *)(packet + sizeof(struct EthHeader) + sizeof(struct IPv4Header));
-			printf("Source Port: %d\n", ntohs(tcp->src_port));
-			printf("Destination Port: %d\n", ntohs(tcp->dest_port));
-
-			// data_offset_res의 상위 4비트에 4를 곱함
-			int tcp_header_len = (tcp->data_offset >> 4) * 4;
-			// TCP 헤더 뒤에 실제 데이터(payload)가 위치하기에 offset 계산
-			u_char *payload = (u_char *)(packet + sizeof(struct EthHeader) + sizeof(struct IPv4Header) + sizeof(struct TCPHeader) + (tcp_header_len - sizeof(struct TCPHeader)));
+		if (ip->proto != 6) {
+			// 이런식으로 처리해야 코드 가독성이 높음
+			continue;
 			
-			printf("\n[Payload] (first 20 bytes) \n");
-			for (int i = 0; i < 20 && (payload + i) < (packet + header->caplen); i++) {
-				printf("%02x ", payload[i]);
-			}
 
 		} else if (ip->proto == 17) {
 			printf("이 패킷은 UDP 패킷입니다.\n");
 		} else if (ip->proto == 1) {
 			printf("이 패킷은 ICMP 패킷입니다.\n");
+		}
+
+
+		printf("이 패킷은 TCP 패킷입니다.\n");
+
+		printf("\n[TCP Header]\n");
+		// IPv4 헤더 뒤에 TCP 헤더가 위치하기에 offset 계산
+		struct TCPHeader *tcp = (struct TCPHeader *)(packet + sizeof(struct EthHeader) + sizeof(struct IPv4Header)); // ip length 계산으로 정확히
+		printf("Source Port: %d\n", ntohs(tcp->src_port));
+		printf("Destination Port: %d\n", ntohs(tcp->dest_port));
+
+		// data_offset_res의 상위 4비트에 4를 곱함
+		int tcp_header_len = (tcp->data_offset >> 4) * 4;
+		// TCP 헤더 뒤에 실제 데이터(payload)가 위치하기에 offset 계산
+		u_char *payload = (u_char *)(packet + sizeof(struct EthHeader) + sizeof(struct IPv4Header) + sizeof(struct TCPHeader) + (tcp_header_len - sizeof(struct TCPHeader)));
+		
+		printf("\n[Payload] (first 20 bytes) \n");
+		// int writelen = 조건문
+		for (int i = 0; i < 20 && (payload + i) < (packet + header->caplen); i++) {
+			printf("%02x ", payload[i]);
 		}
         printf("\n------------------------------------------\n");
 	}
