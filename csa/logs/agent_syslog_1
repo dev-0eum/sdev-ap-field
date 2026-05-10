@@ -1,0 +1,40 @@
+[agent_syslog_1] 2026-05-09
+
+== Session Summary ==
+Goal: CSA (Channel Switch Attack) 코드 완성
+
+== Changed Files ==
+1. csa/CMakeLists.txt
+   - 프로젝트명, C++17, 소스 목록(src/*.cpp), include_directories, pcap 링크 설정
+
+2. csa/include/dot11.h
+   - MAC -> Mac 오타 수정 (dest/src/bssid 반환 타입)
+
+3. csa/include/radiotap.h
+   - static uint16_t get_len(const uint8_t* packet) 선언 추가
+
+4. csa/src/radiotap.cpp
+   - get_len() 구현: RadioTapHdr::len_ 필드 읽어 반환
+
+5. csa/main.cpp
+   - 공격 루프 완성
+     * pcap_next_ex() 로 패킷 수신
+     * Beacon 프레임 필터 (subtype=0x80, ver_type=0x00)
+     * AP MAC (addr_2) 매칭
+     * Tagged Params 순회 → Tag 37 기준 정렬 위치에 CSA IE 삽입
+       CSA IE: {37, 3, 1, 14, 1} (tag, len, mode, new_ch, count)
+     * addr_1 교체 (broadcast or unicast)
+     * pcap_inject() 전송 후 sleep(1)
+
+6. csa/Test/unit_test1.cpp (신규)
+   - pcap_open_offline() 으로 pcapfile 로드
+   - T1~T8 단위 테스트 (Radiotap 파싱, CSA 삽입, 정렬, addr_1 교체)
+
+== Constraints Applied ==
+- FCS 4바이트 제외 (tags_end = caplen - 4)
+- station_mac 없으면 ff:ff:ff:ff:ff:ff (broadcast)
+- station_mac 있으면 unicast
+- sleep(1) 적용
+
+== Next ==
+- 로그 파일 실시간 기록 기능 main.cpp에 추가 예정 (agent_syslog_2 이후)

@@ -22,9 +22,9 @@ struct Dot11Hdr {
 };
 
 struct BeaconHdr : public Dot11Hdr {
-    MAC dest() const { return addr_1; }
-    MAC src() const { return addr_2; }
-    MAC bssid() const { return addr_3; }
+    Mac dest() const { return addr_1; }
+    Mac src() const { return addr_2; }
+    Mac bssid() const { return addr_3; }
     
     struct fixed_param {
         uint64_t timestamp;

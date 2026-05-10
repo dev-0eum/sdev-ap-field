@@ -19,3 +19,7 @@
 ### Test
 - Build a unit test code into "csa/Test/unit_test{$trial_number}.cpp" with using "pcap_offline()" function to check the code works or not
 - Testfile is located in "csa/pcapfile/"
+
+### Logs
+- The Folder is "csa/logs/"
+- Make File named "agent_syslog_{$trial_number}"

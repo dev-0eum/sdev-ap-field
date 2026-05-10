@@ -25,3 +25,13 @@ add_executable(csa ${SOURCES})
 
 # 7. pcap 라이브러리 링크
 target_link_libraries(csa pcap)
+
+# 8. Unit Test 빌드 (공유 소스: mac, radiotap, dot11)
+set(TEST_SHARED_SOURCES
+    src/dot11.cpp
+    src/mac.cpp
+    src/radiotap.cpp
+)
+
+add_executable(unit_test1 Test/unit_test1.cpp ${TEST_SHARED_SOURCES})
+target_link_libraries(unit_test1 pcap)
