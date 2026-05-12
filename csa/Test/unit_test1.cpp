@@ -49,8 +49,8 @@ static bool has_csa_tag(const uint8_t* tags_start, const uint8_t* tags_end,
 // ── CSA IE 삽입 함수 (main.cpp 로직 동일) ───────────────────────
 static vector<uint8_t> build_csa_packet(const uint8_t* packet, int caplen,
                                         const Mac& station_mac) {
-    uint16_t rt_len = RadioTapHdr::get_len(packet);
-    int min_len = rt_len + (int)sizeof(BeaconHdr) + (int)sizeof(BeaconHdr::fixed_param);
+    uint16_t rt_len = ((RadioTapHdr*)packet)->get_len();
+    int min_len = rt_len + (int)sizeof(Dot11Hdr) + (int)sizeof(BeaconHdr::Fix);
     if (caplen < min_len) return {};
 
     const BeaconHdr* beacon = (const BeaconHdr*)(packet + rt_len);
@@ -88,7 +88,7 @@ static vector<uint8_t> build_csa_packet(const uint8_t* packet, int caplen,
 
     // addr_1 교체
     int addr1_offset = rt_len + 4;
-    memcpy(new_packet.data() + addr1_offset, station_mac.addr, 6);
+    memcpy(new_packet.data() + addr1_offset, station_mac.get_addr(), 6);
 
     return new_packet;
 }
@@ -122,8 +122,8 @@ int main() {
     int processed = 0;
 
     while (pcap_next_ex(pcap, &hdr, &pkt) == 1) {
-        uint16_t rt_len = RadioTapHdr::get_len(pkt);
-        int min_len = rt_len + (int)sizeof(BeaconHdr) + (int)sizeof(BeaconHdr::fixed_param);
+        uint16_t rt_len = ((RadioTapHdr*)pkt)->get_len();
+        int min_len = rt_len + (int)sizeof(Dot11Hdr) + (int)sizeof(BeaconHdr::Fix);
         if ((int)hdr->caplen < min_len) continue;
 
         const BeaconHdr* beacon = (const BeaconHdr*)(pkt + rt_len);
@@ -150,7 +150,7 @@ int main() {
               "T4: new packet size >= original header + CSA IE (5 bytes)");
 
         // ── TEST 5: CSA IE (tag 37) 존재 + channel=14 ────────
-        uint16_t new_rt_len = RadioTapHdr::get_len(new_pkt.data());
+        uint16_t new_rt_len = ((RadioTapHdr*)new_pkt.data())->get_len();
         const BeaconHdr* new_beacon = (const BeaconHdr*)(new_pkt.data() + new_rt_len);
         const uint8_t* new_tags_s = (const uint8_t*)new_beacon->first_tag();
         const uint8_t* new_tags_e = new_pkt.data() + new_pkt.size();

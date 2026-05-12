@@ -10,11 +10,12 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 
 # 4. 소스 파일 목록
 set(SOURCES
-    main.cpp
+    csa.cpp
     src/dot11.cpp
     src/mac.cpp
     src/param.cpp
     src/radiotap.cpp
+    src/utils.cpp
 )
 
 # 5. 헤더 파일 경로 설정
@@ -35,3 +36,6 @@ set(TEST_SHARED_SOURCES
 
 add_executable(unit_test1 Test/unit_test1.cpp ${TEST_SHARED_SOURCES})
 target_link_libraries(unit_test1 pcap)
+
+add_executable(unit_test2 Test/unit_test2.cpp ${TEST_SHARED_SOURCES})
+target_link_libraries(unit_test2 pcap)

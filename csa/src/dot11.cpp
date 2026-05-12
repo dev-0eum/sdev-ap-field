@@ -12,12 +12,12 @@ bool Dot11Hdr::is_data() const {
 }
 
 /* BeaconHdr */
-// tag_param의 멤버 함수 구현
-void BeaconHdr::tag_param::print_tag_info() const {
+// Tag의 멤버 함수 구현
+void BeaconHdr::Tag::print_tag_info() const {
     printf("Tag Number: %d, Tag Length: %d\n", number, length);
 }
 
-void BeaconHdr::tag_param::value(const uint8_t* data) const {
+void BeaconHdr::Tag::value(const uint8_t* data) const {
     printf("Tag[%d] Data: ", number);
     for (int i = 0; i < length; i++) {
         printf("%c", data[i]);
@@ -26,7 +26,8 @@ void BeaconHdr::tag_param::value(const uint8_t* data) const {
 }
 
 // BeaconHdr의 멤버 함수 구현
-BeaconHdr::tag_param* BeaconHdr::first_tag() const {
-    // 부모 클래스와 fixed_param 이후의 위치를 계산하여 반환
-    return (tag_param*)((uint8_t*)this + sizeof(BeaconHdr) + sizeof(fixed_param));
+// Fix가 이제 BeaconHdr의 멤버(fix_)이므로, tagged params 시작 위치는
+// Dot11Hdr 크기 + Fix 크기만큼 이동한 위치
+BeaconHdr::Tag* BeaconHdr::first_tag() const {
+    return (Tag*)((uint8_t*)this + sizeof(Dot11Hdr) + sizeof(Fix));
 }

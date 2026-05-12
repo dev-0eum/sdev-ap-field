@@ -1,0 +1,63 @@
+[agent_syslog_3] 2026-05-12
+
+== Session Summary ==
+Goal: 유저가 수정한 .h / .cpp 파일 기반으로 빌드 가능하도록 연관 코드 전체 수정
+
+== 헤더 변경 사항 분석 ==
+1. include/dot11.h
+   - fixed_param 구조체 → Fix 이름으로 변경, fix_ 멤버로 BeaconHdr에 내장
+   - tag_param 구조체 → Tag 이름으로 변경
+   - csa 구조체(Tag 상속) 추가 및 csa_ 멤버로 내장
+   - first_tag() 반환 타입 tag_param* (미수정 상태)
+
+2. include/radiotap.h
+   - PresentBit, Flag enum 추가
+   - FieldInfo 구조체 + RT_FIELD_INFO[14] 멤버 추가 (인스턴스 멤버로 선언됨 → 레이아웃 파괴)
+   - Present 구조체 추가 (present_ 필드를 Present 타입으로 변경)
+   - get_len() static → 인스턴스 메서드로 변경
+   - init(), get_fcs() 선언 추가
+
+3. include/mac.h
+   - addr 필드 public → protected 변경
+
+4. src/radiotap.cpp
+   - init(), get_fcs() 반환 타입 누락
+
+== 수정된 파일 ==
+1. include/dot11.h
+   - Tag::next() 반환 타입: tag_param* → Tag*, sizeof(tag_param) → sizeof(Tag)
+   - first_tag() 반환 타입: tag_param* → Tag*
+
+2. include/radiotap.h
+   - RT_FIELD_INFO → static constexpr (인스턴스 레이아웃에서 제거, sizeof(RadioTapHdr)=8 복원)
+   - Present 구조체에 uint32_t val_ 멤버 추가, next()에서 val_ 참조
+
+3. include/mac.h
+   - get_addr() const 접근자 추가
+
+4. src/dot11.cpp
+   - BeaconHdr::tag_param:: → BeaconHdr::Tag::
+   - first_tag(): sizeof(BeaconHdr)+sizeof(fixed_param) → sizeof(Dot11Hdr)+sizeof(Fix)
+
+5. src/radiotap.cpp
+   - void RadioTapHdr::init() 반환 타입 추가
+   - size_t RadioTapHdr::get_fcs() 반환 타입 추가
+   - present_ = 0 → present_.val_ = 0
+   - present_ & (...) → present_.val_ & (...)
+
+6. main.cpp
+   - RadioTapHdr* rt_hdr = ...; rt_hdr->get_len() → ((RadioTapHdr*)packet)->get_len()
+   - beacon->addr_2.addr → beacon->addr_2.get_addr()
+   - ap_mac.addr → ap_mac.get_addr()
+   - station_mac.addr → station_mac.get_addr()
+   - min_len: sizeof(BeaconHdr) → sizeof(Dot11Hdr)+sizeof(BeaconHdr::Fix)
+
+7. Test/unit_test1.cpp
+   - RadioTapHdr::get_len(pkt) → ((RadioTapHdr*)pkt)->get_len()
+   - sizeof(BeaconHdr::fixed_param) → sizeof(BeaconHdr::Fix)
+   - sizeof(BeaconHdr) → sizeof(Dot11Hdr) (min_len 계산)
+   - station_mac.addr → station_mac.get_addr()
+
+8. Test/unit_test2.cpp
+   - 동일 패턴 전체 수정
+   - test9_diff: sizeof(BeaconHdr)+sizeof(fixed_param) → sizeof(Dot11Hdr)+sizeof(BeaconHdr::Fix)

@@ -1,0 +1,23 @@
+[agent_syslog_4] 2026-05-12
+
+== Session Summary ==
+Goal: main.cpp → csa.cpp 파일명 변경 + 로그 기능 utils.cpp/utils.h로 분리
+
+== Changed Files ==
+1. main.cpp → 삭제
+
+2. csa.cpp (신규, main.cpp 대체)
+   - log 관련 코드(g_log, log_init, log_write) 제거
+   - #include <utils.h> 추가
+   - 나머지 로직 동일
+
+3. include/utils.h (신규)
+   - log_init(), log_write() 선언
+
+4. src/utils.cpp (신규)
+   - g_log (static ofstream) 전역 변수
+   - log_init(): logs/ 디렉토리 생성, 타임스탬프 기반 로그 파일 오픈
+   - log_write(): 타임스탬프 prefix 붙여 stdout + 파일에 동시 기록
+
+5. CMakeLists.txt
+   - SOURCES: main.cpp → csa.cpp, src/utils.cpp 추가

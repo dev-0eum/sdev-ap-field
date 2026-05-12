@@ -3,8 +3,10 @@
 
 #pragma pack(push, 1)
 struct Mac {
+    protected:
     uint8_t addr[6];
 
+    public:
     // 생성자 및 함수 선언
     Mac();
     Mac(const char* mac_str);
@@ -16,5 +18,6 @@ struct Mac {
     bool operator<(const Mac& other) const;
     void print_mac() const;
     std::string to_string() const;
+    const uint8_t* get_addr() const { return addr; }
 };
 #pragma pack(pop)

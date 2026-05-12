@@ -26,29 +26,34 @@ struct BeaconHdr : public Dot11Hdr {
     Mac src() const { return addr_2; }
     Mac bssid() const { return addr_3; }
     
-    struct fixed_param {
+    struct Fix {
         uint64_t timestamp;
         uint16_t beaconInterval;
         uint16_t capabilityInfo;
-    };
+    } fix_;
 
-    struct tag_param {
+    struct Tag {
         uint8_t number;
         uint8_t length;
 
         // 짧은 함수들은 헤더에 두어도 무방합니다.
         void print_tag_info() const;
         void value(const uint8_t* data) const;
-        
-        tag_param* next() const {
-            return (tag_param*)((uint8_t*)this + sizeof(tag_param) + length);
+
+        Tag* next() const {
+            return (Tag*)((uint8_t*)this + sizeof(Tag) + length);
         }
     };
 
+    struct csa : Tag {
+        uint8_t csa_mode;
+        uint8_t new_ch;
+        uint8_t sw_count;
+    } csa_;
+
     // 태그 시작 위치 계산 함수
-    tag_param* first_tag() const;
+    Tag* first_tag() const;
+    bool is_beacon() const { return (subtype_ == 0x80) && (ver_type_ == 0x00); }
 };
 typedef BeaconHdr* PBeaconHdr;
-
-
 #pragma pack(pop)

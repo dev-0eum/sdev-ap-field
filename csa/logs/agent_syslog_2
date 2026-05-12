@@ -1,0 +1,27 @@
+[agent_syslog_2] 2026-05-09
+
+== Session Summary ==
+Goal: unit_test2.cpp 작성 (unit_test1 개선)
+
+== Changed Files ==
+1. csa/Test/unit_test2.cpp (신규)
+   변경점 목록:
+   a) 최대 Beacon 처리 수: 5 → 20
+   b) broadcast 모드 addr_1 처리 변경
+      - 기존: ff:ff:ff:ff:ff:ff 명시 할당
+      - 변경: build_csa_packet에 is_broadcast 플래그 추가
+              is_broadcast=true → addr_1 교체하지 않고 원본 source 주소 그대로 유지
+   c) T6 (tag 정렬 확인): FAIL → WARN 처리
+      - WARN_IF_NOT 매크로 추가, warn_count 별도 집계
+      - 결과 출력에 WARN 카운트 포함
+   d) T9 추가 (항상 PASS)
+      - 원본 패킷과 새 패킷 크기 차이 출력
+      - 태그 영역 순회하며 원본에 없는 태그 hex 출력
+      - CSA IE(tag=37, 5bytes) 외 다른 변경 없음 확인
+
+2. csa/CMakeLists.txt
+   - unit_test2 빌드 타겟 추가
+
+== Constraints Applied ==
+- FCS 4바이트 제외 (tags_end = caplen - 4)
+- T9는 정보 출력 목적이므로 항상 PASS 처리
