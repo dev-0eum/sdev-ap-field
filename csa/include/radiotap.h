@@ -66,6 +66,7 @@ struct RadioTapHdr {
 
     void init();
     uint16_t get_len(){ return len_; };
+    bool has_fcs() const;
     size_t get_fcs();
 };
 typedef RadioTapHdr* PRadioTapHdr;

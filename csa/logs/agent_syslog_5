@@ -1,0 +1,33 @@
+[agent_syslog_5] 2026-05-12
+
+== Session Summary ==
+Goal: unit_test3.cpp 작성 — malformed 체크 + Goal.md Result 조건 검증
+
+== New Files ==
+1. Test/unit_test3.cpp
+   테스트 항목:
+   T1: 패킷 정상 구조 확인 (check_malformed 통과)
+   T2: Radiotap 길이가 패킷 경계 안에 있는지
+   T3: FCS 크기가 0 또는 4바이트인지
+   T4: 모든 태그 length가 패킷 경계를 초과하지 않는지
+   T5: 원본 패킷에 중복 태그 number 없는지 (WARN)
+   T6: CSA 패킷 조립 성공
+   T7: 새 패킷 크기 >= FCS 제거 원본 + 5바이트
+   T8: Goal.md Result 조건 — diff는 CSA IE + FCS 제거 바이트만 (check_result_condition)
+   T9: 새 패킷 끝에 원본 FCS 바이트 없음 확인
+
+   check_malformed(): 구조 이상 탐지 함수
+     - Radiotap 헤더 크기 부족
+     - radiotap len 범위 초과
+     - Dot11Hdr+Fix 크기 부족
+     - Beacon 프레임이 아님
+     - tags_start > tags_end
+     - tag length 경계 초과
+
+   check_result_condition(): Goal.md Result 검증
+     - Radiotap + Dot11Hdr+Fix 구간 byte-for-byte 동일
+     - 태그 영역에서 tag 37 제외 후 모든 태그 동일
+
+== Changed Files ==
+2. CMakeLists.txt
+   - unit_test2 제거, unit_test3 추가 (CLAUDE.md 규칙: 이전 실행 파일 제거)

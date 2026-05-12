@@ -1,0 +1,32 @@
+[agent_syslog_6] 2026-05-12
+
+== Session Summary ==
+Goal: tag 37 존재 시 new_ch 변경 로직으로 csa.cpp 수정 +
+      unit_test3.cpp를 변경 후 패킷의 malformed 체크로 개선
+
+== Changed Files ==
+
+1. csa.cpp
+   변경 전:
+   - Phase 1: 원본 패킷 버퍼를 직접 수정 (const uint8_t* → in-place write, UB)
+   - Phase 2: csa_inserted 여부에 따라 태그 skip or 복사
+   변경 후:
+   - 단일 루프로 통합
+   - tag 37 발견 시: length==3이면 복사본(mod[5])을 만들어 mod[3]=14로 덮어쓴 뒤 삽입
+   - tag 37 미발견 시: t->number > 37인 시점에 csa_ie 삽입 (정렬 유지)
+   - 사용하지 않는 BeaconHdr::Tag* tag 변수 제거
+
+2. Test/unit_test3.cpp
+   변경 전: T1~T5가 원본 패킷 구조 검증
+   변경 후: 새 패킷(build_csa_packet 결과) malformed 체크
+   - T0: 패킷 조립 성공 여부
+   - T1: check_malformed(new_pkt) 통과 여부 (전체 구조 정상)
+   - T2: 새 패킷 Radiotap len 유효 범위
+   - T3: 새 패킷 FCS = 0 (FCS 제거 확인)
+   - T4: 새 패킷 태그 length 경계 초과 없음
+   - T5: 새 패킷에 tag 37 존재 + new_ch == 14
+   - T6: Goal.md Result 조건 (diff = CSA IE + FCS만)
+   - T7: 크기 차이 >= 5 bytes
+   - T8: 새 패킷 끝이 원본 FCS와 다름
+
+   build_csa_packet: csa.cpp 단일 루프 로직과 동기화

@@ -37,5 +37,5 @@ set(TEST_SHARED_SOURCES
 add_executable(unit_test1 Test/unit_test1.cpp ${TEST_SHARED_SOURCES})
 target_link_libraries(unit_test1 pcap)
 
-add_executable(unit_test2 Test/unit_test2.cpp ${TEST_SHARED_SOURCES})
-target_link_libraries(unit_test2 pcap)
+add_executable(unit_test3 Test/unit_test3.cpp ${TEST_SHARED_SOURCES})
+target_link_libraries(unit_test3 pcap)
